@@ -114,7 +114,7 @@ public class DashboardController {
         }
 
         Map<String, Object> stats = new HashMap<>();
-        stats.put("sittingHours", Math.round(sittingHours * 10) / 10.0); // Làm tròn 1 chữ số
+        stats.put("sittingHours", Math.round(sittingHours * 10.0) / 10.0);
         stats.put("posturePercent", (int) ((goodPostureCount * 100.0) / totalMinutes));
         stats.put("averageDistance", (int) (sumDistance / totalMinutes));
         stats.put("sleepHours", Math.round((sleepLogCount / 60.0) * 10) / 10.0);

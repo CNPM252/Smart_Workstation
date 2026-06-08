@@ -38,6 +38,11 @@ const MainLayout = () => {
                         <span>Tổng quan</span>
                     </NavLink>
 
+                    <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}>
+                        <SettingsIcon size={20} />
+                        <span>Cấu hình</span>
+                    </NavLink>
+
                     <NavLink to="/rooms" className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}>
                         <Map size={20} />
                         <span>Không gian</span>
@@ -49,10 +54,6 @@ const MainLayout = () => {
                         <span>Nhóm & Lớp</span>
                     </NavLink>
 
-                    <NavLink to="/settings" className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}>
-                        <SettingsIcon size={20} />
-                        <span>Cấu hình</span>
-                    </NavLink>
                 </nav>
 
                 <div className="sidebar-footer">
