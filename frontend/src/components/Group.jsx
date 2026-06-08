@@ -74,22 +74,68 @@ const Groups = () => {
         fetchMembers();
     }, [selectedGroup]);
 
+
     const handleCreateGroup = async (e) => {
         e.preventDefault();
-        if (!newGroupName.trim() || !selectedRoom) return;
+
+        // 1. Kiểm tra xem đã chọn Room chưa
+        if (!selectedRoom) {
+            alert("Bạn chưa chọn Không gian (Room) nào! Hãy tạo Room trước khi tạo nhóm.");
+            return;
+        }
+        // 2. Kiểm tra tên nhóm
+        if (!newGroupName.trim()) {
+            alert("Vui lòng nhập tên nhóm!");
+            return;
+        }
 
         try {
-            // ĐÃ FIX: Gửi managerUsername thay vì UUID
-            await axiosClient.post(`/api/rooms/${selectedRoom}/groups`, {
-                name: newGroupName,
+            const payload = {
+                name: newGroupName.trim(),
                 managerUsername: currentUsername
-            });
+            };
+
+            // Gọi API
+            const res =  await axiosClient.post(`/api/rooms/${selectedRoom}/groups`, payload);
+            alert(`Nhóm: "${res.data.name}" đã được tạo!`);
+
+            // Làm sạch ô input và tải lại danh sách
             setNewGroupName('');
-            const response = await axiosClient.get(`/api/rooms/${selectedRoom}/groups`);
-            setGroups(response.data);
+            const refreshRes = await axiosClient.get(`/api/rooms/${selectedRoom}/groups`);
+            setGroups(refreshRes.data);
+
         } catch (error) {
-            console.error("Lỗi tạo nhóm", error);
-            alert("Lỗi khi tạo nhóm!");
+            alert("Lỗi từ máy chủ: " + (error.response?.data || error.message));
+        }
+    };
+
+    const handleAddMember = async (e) => {
+        e.preventDefault();
+
+        if (!selectedGroup) {
+            alert("Vui lòng chọn nhóm trước!");
+            return;
+        }
+        if (!newMemberUsername.trim()) {
+            alert("Vui lòng nhập MSSV!");
+            return;
+        }
+
+        setErrorMsg('');
+
+        try {
+            const payload = { username: newMemberUsername.trim() };
+
+            const res = await axiosClient.post(`/api/groups/${selectedGroup.id}/members`, payload);
+            alert(`Thêm "${res.data.name}" thành công`);
+            setNewMemberUsername('');
+            const refreshRes = await axiosClient.get(`/api/groups/${selectedGroup.id}/members`);
+            setMembers(refreshRes.data);
+
+        } catch (error) {
+            console.error("Lỗi thêm thành viên:", error);
+            // In lỗi đỏ ra giao diện thay vì console
+            setErrorMsg(error.response?.data || "Không tìm thấy sinh viên hoặc sinh viên đã trong nhóm!");
         }
     };
 
@@ -108,22 +154,22 @@ const Groups = () => {
         }
     };
 
-    const handleAddMember = async (e) => {
-        e.preventDefault();
-        if (!newMemberUsername.trim() || !selectedGroup) return;
-        setErrorMsg('');
-
-        try {
-            await axiosClient.post(`/api/groups/${selectedGroup.id}/members`, {
-                username: newMemberUsername.trim()
-            });
-            setNewMemberUsername('');
-            const response = await axiosClient.get(`/api/groups/${selectedGroup.id}/members`);
-            setMembers(response.data);
-        } catch (error) {
-            setErrorMsg(error.response?.data || "Không tìm thấy sinh viên hoặc sinh viên đã trong nhóm!");
-        }
-    };
+    // const handleAddMember = async (e) => {
+    //     e.preventDefault();
+    //     if (!newMemberUsername.trim() || !selectedGroup) return;
+    //     setErrorMsg('');
+    //
+    //     try {
+    //         await axiosClient.post(`/api/groups/${selectedGroup.id}/members`, {
+    //             username: newMemberUsername.trim()
+    //         });
+    //         setNewMemberUsername('');
+    //         const response = await axiosClient.get(`/api/groups/${selectedGroup.id}/members`);
+    //         setMembers(response.data);
+    //     } catch (error) {
+    //         setErrorMsg(error.response?.data || "Không tìm thấy sinh viên hoặc sinh viên đã trong nhóm!");
+    //     }
+    // };
 
     const handleRemoveMember = async (userId) => {
         if(!window.confirm("Xóa sinh viên này khỏi nhóm?")) return;

@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import axiosClient from '../api/axiosClient';
 import { useAuth } from '../context/AuthContext';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, Line } from 'recharts';
 import CalendarHeatmap from 'react-calendar-heatmap';
 import { Tooltip as ReactTooltip } from 'react-tooltip';
 import 'react-calendar-heatmap/dist/styles.css';
@@ -19,6 +19,8 @@ const Dashboard = () => {
   });
   const [heatmapData, setHeatmapData] = useState([]);
   const [message, setMessage] = useState('');
+
+  const [chartView, setChartView] = useState('week');
   const [chartData, setChartData] = useState([])
 
   // Mock data biểu đồ
@@ -37,6 +39,27 @@ const Dashboard = () => {
   const currentYear = new Date().getFullYear();
   const startDate = new Date(`${currentYear}-01-01`);
   const endDate = new Date(`${currentYear}-12-31`);
+
+  useEffect(() => {
+    const fetchChartData = async () => {
+      if (!currentUserId) return;
+
+      try {
+        // Quyết định gọi API nào dựa trên giá trị của dropdown
+        const endpoint = chartView === 'week' ? '/api/dashboard/weekly-chart' : '/api/dashboard/monthly-chart';
+
+        const res = await axiosClient.get(endpoint, {
+          params: { userId: currentUserId }
+        });
+
+        setChartData(res.data);
+      } catch (error) {
+        console.error("Lỗi lấy dữ liệu biểu đồ:", error);
+      }
+    };
+
+    fetchChartData();
+  }, [chartView, currentUserId]);
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -69,14 +92,9 @@ const Dashboard = () => {
             setHeatmapData(heatmapRes.data);
           }
         }
-        //3 fetch weekly data
-        const weekly = await axiosClient.get('api/dashboard/weekly-chart', {
-          params: { userId: currentUserId }
-        })
 
-        if (weekly){
-          setChartData(weekly.data);
-        }
+        // ĐÃ XÓA BƯỚC 3 (Fetch weekly data) VÌ USE-EFFECT TRÊN ĐÃ LO RỒI
+
       } catch (error) {
         console.error("Lỗi khi tải dữ liệu Dashboard:", error);
       }
@@ -113,13 +131,23 @@ const Dashboard = () => {
           </div>
         </div>
 
+
+
+
         {/* Hàng 2: Biểu đồ */}
-        <div className="chart-card">
-          <div className="chart-header">
-            <h3>Thống kê thời gian ngồi</h3>
-            <select className="chart-select">
-              <option>Tuần này</option>
-              <option>Tháng này</option>
+
+        <div className="card border p-6 rounded-lg shadow-sm bg-white mt-6">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-bold text-gray-800">Thống kê thời gian ngồi</h3>
+
+            {/* Dropdown điều khiển State chartView */}
+            <select
+                className="border border-gray-300 rounded-md p-2 outline-none focus:border-blue-500 font-medium text-gray-700"
+                value={chartView}
+                onChange={(e) => setChartView(e.target.value)}
+            >
+              <option value="week">Tuần này</option>
+              <option value="month">Tháng này</option>
             </select>
           </div>
 
@@ -127,14 +155,53 @@ const Dashboard = () => {
             <ResponsiveContainer>
               <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#eee" />
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 12 }} dy={10} />
+
+                <XAxis
+                    dataKey="day"
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fill: '#888', fontSize: 12, fontWeight: 500 }}
+                    dy={10}
+                    interval={0} // Bắt buộc = 0 để Recharts không tự ý bỏ qua các điểm data
+                    tickFormatter={(value, index) => {
+                      if (chartView === 'month') {
+                        // Logic lọc thần thánh: Chỉ hiển thị các mốc tuần, giấu đi các ngày còn lại
+                        if (index === 0) return 'Tuần 1';
+                        if (index === 7) return 'Tuần 2';
+                        if (index === 14) return 'Tuần 3';
+                        if (index === 21) return 'Tuần 4';
+                        if (index === 28) return 'Tuần 5';
+                        return ''; // Ẩn hoàn toàn để không bị đè chữ
+                      }
+                      // Nếu xem theo tuần thì trả về giá trị gốc (T2, T3...)
+                      return value;
+                    }}
+                />
+
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 12 }} />
-                <RechartsTooltip />
-                <Line type="monotone" dataKey="hours" stroke="#3b82f6" strokeWidth={2} dot={{ r: 4, strokeWidth: 2, fill: '#fff', stroke: '#3b82f6' }} activeDot={{ r: 6 }} />
+
+                {/* Custom lại Tooltip để hiện tiếng Việt cho chuyên nghiệp */}
+                <RechartsTooltip
+                    formatter={(value) => [`${value} giờ`, 'Thời gian ngồi']}
+                    labelStyle={{ fontWeight: 'bold', color: '#374151' }}
+                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
+                />
+
+                <Line
+                    type="monotone"
+                    dataKey="hours"
+                    stroke="#3b82f6"
+                    strokeWidth={3}
+                    dot={{ r: 4, strokeWidth: 2, fill: '#fff', stroke: '#3b82f6' }}
+                    activeDot={{ r: 6, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
+                    animationDuration={1500} // Hiệu ứng trôi từ từ lúc mới load
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
+
+
 
         {/* Hàng 3: Heatmap GitHub Contributions */}
         {!isGuest && (
@@ -182,126 +249,5 @@ const Dashboard = () => {
 };
 
 
-
-// const Dashboard = () => {
-//   const [isConnected, setIsConnected] = useState(false);
-//   const [sensorData, setSensorData] = useState({ distance: 0, light: 0, motion: false });
-//   const portRef = useRef(null);
-//
-//   const connectToYoloBit = async () => {
-//     try {
-//       const port = await navigator.serial.requestPort();
-//       await port.open({ baudRate: 115200 });
-//
-//       // ==========================================
-//       // 🚀 BÙA CHỐNG RESET CHO MẠCH ESP32/YOLOBIT
-//       // Ngăn Chrome gửi tín hiệu khởi động lại mạch
-//       await port.setSignals({ dataTerminalReady: true, requestToSend: true });
-//
-//       // Cho mạch nghỉ 1 giây để ổn định kết nối USB
-//       await new Promise(resolve => setTimeout(resolve, 1000));
-//       // ==========================================
-//
-//       portRef.current = port;
-//       setIsConnected(true);
-//       console.log("✅ Đã kết nối Yolo:Bit! Đang chờ dữ liệu...");
-//
-//       const textDecoder = new TextDecoderStream();
-//       const readableStreamClosed = port.readable.pipeTo(textDecoder.writable);
-//       const reader = textDecoder.readable.getReader();
-//
-//       let buffer = "";
-//
-//       while (true) {
-//         const { value, done } = await reader.read();
-//         if (done) {
-//           reader.releaseLock();
-//           break;
-//         }
-//
-//         buffer += value;
-//
-//         let newlineIndex = buffer.indexOf('\n');
-//
-//         while (newlineIndex >= 0) {
-//           // Lấy 1 dòng và cắt bỏ rác hai đầu
-//           let line = buffer.slice(0, newlineIndex).trim();
-//           buffer = buffer.slice(newlineIndex + 1);
-//
-//           // CHIẾN THUẬT MỚI: Bắt đúng đoạn bắt đầu bằng '{' và kết thúc bằng '}'
-//           const startIndex = line.indexOf('{');
-//           const endIndex = line.lastIndexOf('}');
-//
-//           if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
-//             const cleanJsonString = line.substring(startIndex, endIndex + 1);
-//
-//             try {
-//               const data = JSON.parse(cleanJsonString);
-//
-//               // In ra F12 để sếp biết React đã đọc được
-//               console.log("🎯 Data nhận được:", data);
-//
-//               setSensorData({
-//                 macAddress: data.mac_address,
-//                 distance: data.distance,
-//                 light: data.light,
-//                 motion: data.motion
-//               });
-//
-//             } catch (err) {
-//               console.warn("⚠️ Bỏ qua dòng JSON lỗi:", cleanJsonString);
-//             }
-//           } else if (line.length > 0) {
-//             // In ra để xem có rác gì lạ không
-//             console.log("🗑️ Dòng rác bị bỏ qua:", line);
-//           }
-//
-//           newlineIndex = buffer.indexOf('\n');
-//         }
-//       }
-//     } catch (error) {
-//       console.error("❌ Lỗi hoặc người dùng hủy kết nối:", error);
-//       setIsConnected(false);
-//     }
-//   };
-//
-//   return (
-//       <div className="dashboard-container p-6">
-//         <header className="mb-6">
-//           <h2 className="text-2xl font-bold mb-4">Workstation Dashboard</h2>
-//           {!isConnected ? (
-//               <button
-//                   onClick={connectToYoloBit}
-//                   className="bg-blue-500 hover:bg-blue-600 text-white font-bold px-4 py-2 rounded shadow transition duration-200"
-//               >
-//                 🔌 Kết nối Yolo:Bit
-//               </button>
-//           ) : (
-//               <span className="text-green-500 font-bold bg-green-100 px-4 py-2 rounded border border-green-300">
-//             🟢 Đang nhận dữ liệu trực tiếp...
-//           </span>
-//           )}
-//         </header>
-//
-//         {/* Demo hiển thị dữ liệu */}
-//         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
-//           <div className="card border p-6 rounded-lg shadow-sm bg-white text-center">
-//             <h3 className="text-gray-500 font-semibold mb-2">Độ sáng</h3>
-//             <p className="text-4xl font-bold text-yellow-500">{sensorData.light} <span className="text-xl">%</span></p>
-//           </div>
-//           <div className="card border p-6 rounded-lg shadow-sm bg-white text-center">
-//             <h3 className="text-gray-500 font-semibold mb-2">Khoảng cách</h3>
-//             <p className="text-4xl font-bold text-blue-500">{sensorData.distance} <span className="text-xl">cm</span></p>
-//           </div>
-//           <div className="card border p-6 rounded-lg shadow-sm bg-white text-center">
-//             <h3 className="text-gray-500 font-semibold mb-2">Chuyển động</h3>
-//             <p className="text-4xl font-bold text-red-500">
-//               {sensorData.motion ? "🏃 Có người" : "Trống"}
-//             </p>
-//           </div>
-//         </div>
-//       </div>
-//   );
-// };
 
 export default Dashboard;

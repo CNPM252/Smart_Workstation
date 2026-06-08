@@ -39,7 +39,7 @@ public class DeviceService {
         device.setActive(false);
         deviceRepository.save(device);
 
-        System.out.println("Thiết bị [" + macAddress + "] đã trống.");
+        System.out.println("Thiết bị [" + macAddress + "] đã check-out");
     }
 
     /// ///////////////////////////////////

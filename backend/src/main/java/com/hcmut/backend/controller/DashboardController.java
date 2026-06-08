@@ -165,4 +165,50 @@ public class DashboardController {
         return ResponseEntity.ok(chartResponse);
     }
 
+
+    @GetMapping("/monthly-chart")
+    public ResponseEntity<?> getMonthlyChartData(@RequestParam String userId) {
+        User user = userRepository.findByUsername(userId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản!"));
+
+        LocalDate today = LocalDate.now();
+        LocalDate firstDayOfMonth = today.withDayOfMonth(1);
+        int lengthOfMonth = today.lengthOfMonth(); // Tự động biết tháng này có 28, 30 hay 31 ngày
+
+        // 1. Lấy toàn bộ dữ liệu của tháng này
+        List<DailySummary> realData = dailySummaryRepository.findByUserIdAndSummaryDateBetweenOrderBySummaryDateAsc(
+                user.getId().toString(), firstDayOfMonth, firstDayOfMonth.plusDays(lengthOfMonth - 1));
+
+        Map<LocalDate, DailySummary> dataMap = realData.stream()
+                .collect(Collectors.toMap(DailySummary::getSummaryDate, s -> s));
+
+        List<Map<String, Object>> chartResponse = new java.util.ArrayList<>();
+
+        // Định dạng ngày hiển thị trong Tooltip (VD: "01/06", "15/06")
+        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM");
+
+        // 2. Tạo mảng 30 điểm
+        for (int i = 0; i < lengthOfMonth; i++) {
+            LocalDate currentDate = firstDayOfMonth.plusDays(i);
+            Map<String, Object> item = new java.util.HashMap<>();
+
+            // Cứ truyền ngày cụ thể vào để lúc trỏ chuột (Tooltip) nó hiện ra ngày chính xác
+            item.put("day", currentDate.format(formatter));
+
+            if (dataMap.containsKey(currentDate)) {
+                int minutes = dataMap.get(currentDate).getTotalMinutesSeated();
+                double hours = Math.round((minutes / 60.0) * 10.0) / 10.0;
+                item.put("hours", hours);
+            } else {
+                item.put("hours", 0);
+            }
+
+            chartResponse.add(item);
+        }
+
+        return ResponseEntity.ok(chartResponse);
+    }
+
+
+
 }

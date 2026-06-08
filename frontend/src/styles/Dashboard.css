@@ -112,15 +112,36 @@
 .heatmap-legend {
     display: flex;
     align-items: center;
-    justify-content: flex-end;
+    justify-content: flex-end; /* Đẩy chú thích sang góc phải */
     gap: 4px;
-    font-size: 12px;
-    color: #666;
-    margin-top: 10px;
+    margin-top: 15px;
+    font-size: 13px;
+    color: #6b7280; /* Màu xám nhạt cho chữ "Ít" / "Nhiều" */
 }
 
+/* Định hình kích thước ô vuông chú thích */
 .legend-box {
-    width: 12px;
-    height: 12px;
-    border-radius: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
 }
+
+/* Ép màu nền (background-color) cho thẻ div
+  Tone màu xanh lá chuẩn của GitHub Contributions
+*/
+.legend-box.color-empty { background-color: #ebedf0; border: 1px solid #e5e7eb; }
+.legend-box.color-scale-1 { background-color: #9be9a8; }
+.legend-box.color-scale-2 { background-color: #40c463; }
+.legend-box.color-scale-3 { background-color: #30a14e; }
+.legend-box.color-scale-4 { background-color: #216e39; }
+
+/* (Optional) Tiện tay ghi đè luôn màu của biểu đồ SVG
+  nếu sếp muốn biểu đồ cũng dùng dải màu này thay vì màu mặc định
+*/
+
+.react-calendar-heatmap .color-empty { fill: #ebedf0; }
+.react-calendar-heatmap .color-scale-1 { fill: #9be9a8; }
+.react-calendar-heatmap .color-scale-2 { fill: #40c463; }
+.react-calendar-heatmap .color-scale-3 { fill: #30a14e; }
+.react-calendar-heatmap .color-scale-4 { fill: #216e39; }
+

@@ -11,10 +11,13 @@ import Rooms from "./components/Rooms.jsx";
 import RoomDetail from "./components/RoomDetail";
 import Groups from "./components/Group.jsx";
 import ProtectedRoute from './components/ProtectedRoute';
+import { DeviceProvider } from './context/DeviceContext';
+
 
 function App() {
   return (
       <AuthProvider>
+        <DeviceProvider>
         <Router>
           <Routes>
             <Route path="/login" element={<Auth />} />
@@ -35,6 +38,7 @@ function App() {
             <Route path="/" element={<Navigate to="/login" replace />} />
           </Routes>
         </Router>
+        </DeviceProvider>
       </AuthProvider>
   );
 }
