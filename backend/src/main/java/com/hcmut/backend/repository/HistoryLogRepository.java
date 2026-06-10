@@ -29,4 +29,7 @@ public interface HistoryLogRepository extends JpaRepository<HistoryLog, Long> {
     @Transactional
     @Query("DELETE FROM HistoryLog h WHERE h.recordedAt < :cutoffDate")
     void deleteOldLogs(@Param("cutoffDate") LocalDateTime cutoffDate);
+
+
+    long countByCurrentUserIdAndRecordedAtBetween(String currentUserId, LocalDateTime start, LocalDateTime end);
 }

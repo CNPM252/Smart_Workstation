@@ -36,33 +36,6 @@ public class DashboardController {
     private final HistoryLogRepository historyLogRepository;
     private final UserRepository userRepository;
 
-    @GetMapping("/heatmap")
-    public ResponseEntity<?> getHeatmapData(
-            @RequestParam String userId,
-            @RequestParam(required = false) Integer year){
-
-        if (userId.startsWith("guest_")) {
-            return ResponseEntity.ok(List.of());
-        }
-        User user = userRepository.findByUsername(userId)
-            .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản!"));
-
-        int targetYear = (year != null)? year : LocalDate.now().getYear();
-        LocalDate startDate = LocalDate.of(targetYear, 1, 1);
-        LocalDate endDate = LocalDate.of(targetYear, 12, 31);
-
-        List<DailySummary> summaries = dailySummaryRepository.findByUserIdAndSummaryDateBetweenOrderBySummaryDateAsc(user.getId().toString(), startDate, endDate);
-
-        List<Map<String, Object>> heatmapResponse = summaries.stream().map(summary -> {
-            Map<String, Object> map = new java.util.HashMap<>();
-            map.put("date", summary.getSummaryDate().toString());
-            map.put("minutes", summary.getTotalMinutesSeated());
-            map.put("level", summary.getHeatmapLevel());
-            return map;
-        }).collect(Collectors.toList());
-
-        return ResponseEntity.ok(heatmapResponse);
-    }
 
     @GetMapping("/today")
     public ResponseEntity<?> getTodayStats(@RequestParam String userId) {
@@ -126,39 +99,42 @@ public class DashboardController {
     @GetMapping("/weekly-chart")
     public ResponseEntity<?> getWeeklyChartData(@RequestParam String userId) {
         User user = userRepository.findByUsername(userId)
-            .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản!"));
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản!"));
+
+        String dbUserId = user.getId().toString();
         LocalDate today = LocalDate.now();
         LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
 
-        // 1. Lấy dữ liệu từ DB
         List<DailySummary> realData = dailySummaryRepository.findByUserIdAndSummaryDateBetweenOrderBySummaryDateAsc(
-                user.getId().toString(), monday, monday.plusDays(6));
+                dbUserId, monday, monday.plusDays(6));
 
-        // 2. Chuyển sang Map để tra cứu
         Map<LocalDate, DailySummary> dataMap = realData.stream()
                 .collect(Collectors.toMap(DailySummary::getSummaryDate, s -> s));
 
-        // 3. Mảng tên các ngày tiếng Việt để ánh xạ
         String[] vietnameseDays = {"T2", "T3", "T4", "T5", "T6", "T7", "CN"};
-
-        // 4. Tạo danh sách đúng cấu trúc FE: { day: '...', hours: ... }
         List<Map<String, Object>> chartResponse = new java.util.ArrayList<>();
-        
+
         for (int i = 0; i < 7; i++) {
             LocalDate currentDate = monday.plusDays(i);
             Map<String, Object> item = new java.util.HashMap<>();
-            
-            item.put("day", vietnameseDays[i]); // Gán T2, T3...
+            item.put("day", vietnameseDays[i]);
 
-            if (dataMap.containsKey(currentDate)) {
+            // 🚀 VÁ DỮ LIỆU REAL-TIME CHO HÔM NAY
+            if (currentDate.isEqual(today)) {
+                long minutesToday = historyLogRepository.countByCurrentUserIdAndRecordedAtBetween(
+                        dbUserId, today.atStartOfDay(), today.atTime(23, 59, 59));
+                double hours = Math.round((minutesToday / 60.0) * 10.0) / 10.0;
+                item.put("hours", hours);
+            }
+            // Dữ liệu quá khứ lấy từ bảng tổng hợp
+            else if (dataMap.containsKey(currentDate)) {
                 int minutes = dataMap.get(currentDate).getTotalMinutesSeated();
-                // Chuyển phút sang giờ, làm tròn 1 chữ số thập phân
                 double hours = Math.round((minutes / 60.0) * 10.0) / 10.0;
                 item.put("hours", hours);
             } else {
                 item.put("hours", 0);
             }
-            
+
             chartResponse.add(item);
         }
 
@@ -171,31 +147,34 @@ public class DashboardController {
         User user = userRepository.findByUsername(userId)
                 .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản!"));
 
+        String dbUserId = user.getId().toString();
         LocalDate today = LocalDate.now();
         LocalDate firstDayOfMonth = today.withDayOfMonth(1);
-        int lengthOfMonth = today.lengthOfMonth(); // Tự động biết tháng này có 28, 30 hay 31 ngày
+        int lengthOfMonth = today.lengthOfMonth();
 
-        // 1. Lấy toàn bộ dữ liệu của tháng này
         List<DailySummary> realData = dailySummaryRepository.findByUserIdAndSummaryDateBetweenOrderBySummaryDateAsc(
-                user.getId().toString(), firstDayOfMonth, firstDayOfMonth.plusDays(lengthOfMonth - 1));
+                dbUserId, firstDayOfMonth, firstDayOfMonth.plusDays(lengthOfMonth - 1));
 
         Map<LocalDate, DailySummary> dataMap = realData.stream()
                 .collect(Collectors.toMap(DailySummary::getSummaryDate, s -> s));
 
         List<Map<String, Object>> chartResponse = new java.util.ArrayList<>();
-
-        // Định dạng ngày hiển thị trong Tooltip (VD: "01/06", "15/06")
         java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM");
 
-        // 2. Tạo mảng 30 điểm
         for (int i = 0; i < lengthOfMonth; i++) {
             LocalDate currentDate = firstDayOfMonth.plusDays(i);
             Map<String, Object> item = new java.util.HashMap<>();
-
-            // Cứ truyền ngày cụ thể vào để lúc trỏ chuột (Tooltip) nó hiện ra ngày chính xác
             item.put("day", currentDate.format(formatter));
 
-            if (dataMap.containsKey(currentDate)) {
+            // 🚀 VÁ DỮ LIỆU REAL-TIME CHO HÔM NAY
+            if (currentDate.isEqual(today)) {
+                long minutesToday = historyLogRepository.countByCurrentUserIdAndRecordedAtBetween(
+                        dbUserId, today.atStartOfDay(), today.atTime(23, 59, 59));
+                double hours = Math.round((minutesToday / 60.0) * 10.0) / 10.0;
+                item.put("hours", hours);
+            }
+            // Dữ liệu quá khứ
+            else if (dataMap.containsKey(currentDate)) {
                 int minutes = dataMap.get(currentDate).getTotalMinutesSeated();
                 double hours = Math.round((minutes / 60.0) * 10.0) / 10.0;
                 item.put("hours", hours);
@@ -207,6 +186,63 @@ public class DashboardController {
         }
 
         return ResponseEntity.ok(chartResponse);
+    }
+
+
+    @GetMapping("/heatmap")
+    public ResponseEntity<?> getHeatmapData(
+            @RequestParam String userId,
+            @RequestParam(required = false) Integer year){
+
+        if (userId.startsWith("guest_")) {
+            return ResponseEntity.ok(List.of());
+        }
+        User user = userRepository.findByUsername(userId)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản!"));
+
+        String dbUserId = user.getId().toString();
+        LocalDate today = LocalDate.now();
+        int targetYear = (year != null)? year : today.getYear();
+        LocalDate startDate = LocalDate.of(targetYear, 1, 1);
+        LocalDate endDate = LocalDate.of(targetYear, 12, 31);
+
+        List<DailySummary> summaries = dailySummaryRepository.findByUserIdAndSummaryDateBetweenOrderBySummaryDateAsc(
+                dbUserId, startDate, endDate);
+
+        List<Map<String, Object>> heatmapResponse = summaries.stream().map(summary -> {
+            Map<String, Object> map = new java.util.HashMap<>();
+            map.put("date", summary.getSummaryDate().toString());
+            map.put("minutes", summary.getTotalMinutesSeated());
+            map.put("level", summary.getHeatmapLevel());
+            return map;
+        }).collect(Collectors.toList());
+
+        // 🚀 VÁ DỮ LIỆU REAL-TIME CHO HEATMAP (Chỉ vá nếu năm truy vấn là năm hiện tại)
+        if (targetYear == today.getYear()) {
+            long minutesToday = historyLogRepository.countByCurrentUserIdAndRecordedAtBetween(
+                    dbUserId, today.atStartOfDay(), today.atTime(23, 59, 59));
+
+            if (minutesToday > 0) {
+                // Thuật toán gán màu Level Heatmap (Mô phỏng lại logic của Entity DailySummary)
+                int level = 0;
+                if (minutesToday > 0 && minutesToday <= 60) level = 1;         // Dưới 1 tiếng
+                else if (minutesToday > 60 && minutesToday <= 180) level = 2;  // 1 - 3 tiếng
+                else if (minutesToday > 180 && minutesToday <= 300) level = 3; // 3 - 5 tiếng
+                else if (minutesToday > 300) level = 4;                        // Trên 5 tiếng
+
+                // Quét xem trong mảng trả về có record của hôm nay chưa (nếu CronJob lỡ chạy rồi), có thì xóa đi để ghi đè
+                heatmapResponse.removeIf(item -> item.get("date").equals(today.toString()));
+
+                Map<String, Object> todayData = new java.util.HashMap<>();
+                todayData.put("date", today.toString());
+                todayData.put("minutes", minutesToday);
+                todayData.put("level", level);
+
+                heatmapResponse.add(todayData);
+            }
+        }
+
+        return ResponseEntity.ok(heatmapResponse);
     }
 
 

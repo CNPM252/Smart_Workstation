@@ -3,6 +3,8 @@ package com.hcmut.backend.controller;
 import com.hcmut.backend.dto.TelemetryRequest;
 import com.hcmut.backend.dto.DeviceJoinRequest;
 import com.hcmut.backend.model.Device;
+import com.hcmut.backend.model.User;
+import com.hcmut.backend.repository.UserRepository;
 import com.hcmut.backend.service.DeviceService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -24,6 +26,8 @@ public class DeviceController {
     private final ObjectMapper objectMapper;
 
     private final DeviceService deviceService;
+
+    private final UserRepository userRepository;
 
     @PostMapping("/{macAddress}/check-in")
     public ResponseEntity<?> checkIn(@PathVariable String macAddress, @RequestParam String userId) {
@@ -94,17 +98,19 @@ public class DeviceController {
     @PostMapping("/telemetry")
     public ResponseEntity<?> receiveTelemetry(@RequestBody TelemetryRequest request) {
         try {
-            // Tạo cục JSON theo đúng cấu trúc mà hàm @Scheduled đang chờ để parse
             ObjectNode logNode = objectMapper.createObjectNode();
+
             logNode.put("deviceMacAddress", request.getMacAddress());
+
             logNode.put("currentUserId", request.getCurrentUserId());
+
             logNode.put("lightValue", request.getLight());
             logNode.put("distanceValue", request.getDistance());
             logNode.put("recordedAt", System.currentTimeMillis()); // Lấy timestamp hiện tại
 
             String jsonLog = objectMapper.writeValueAsString(logNode);
 
-            // Đẩy thẳng vào Redis Queue (Bên phải đẩy vào, bên trái lấy ra)
+            // Đẩy vào Redis Queue (Bên phải đẩy vào, bên trái lấy ra)
             stringRedisTemplate.opsForList().rightPush("history_log_queue", jsonLog);
 
             return ResponseEntity.ok().build();
