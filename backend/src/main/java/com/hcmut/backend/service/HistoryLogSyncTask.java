@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -26,7 +27,9 @@ public class HistoryLogSyncTask {
     private final DeviceRepository deviceRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Scheduled(fixedRate = 900000)
+    // 15p sync 1 lan, test thi thanh 30000ms = 30s
+    @Scheduled(fixedRate = 30000)
+    @Transactional
     public void syncLogsToDatabase() {
         String queueName = "history_log_queue";
 
@@ -71,10 +74,16 @@ public class HistoryLogSyncTask {
             }
         }
 
-        // Lưu toàn bộ mảng vào DB chỉ bằng 1 câu lệnh duy nhất (Cực kỳ tối ưu)
+        // Lưu toàn bộ mảng vào DB
         if (!batchToSave.isEmpty()) {
-            historyLogRepository.saveAll(batchToSave);
-            System.out.println(">> Đã saveAll() thành công " + batchToSave.size() + " bản ghi vào DB!");
+            try {
+                historyLogRepository.saveAllAndFlush(batchToSave);
+                System.out.println(">> Đã saveAllAndFlush() thành công " + batchToSave.size() + " bản ghi vào DB!");
+            } catch (Exception e) {
+                // Nếu có lỗi constraint (Khóa ngoại, Null...), nó sẽ văng thẳng vào đây
+                System.err.println(">> LỖI NGHIÊM TRỌNG KHI GHI XUỐNG POSTGRES:");
+                e.printStackTrace();
+            }
         }
     }
 }

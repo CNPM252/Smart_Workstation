@@ -14,6 +14,7 @@ public class HistoryLogCleanupTask {
 
     private final HistoryLogRepository historyLogRepository;
 
+    // Clear history luc 2h sang
     @Scheduled(cron = "0 0 2 * * ?")
     public void cleanupOldLogs(){
         LocalDateTime cutoffDate = LocalDateTime.now().minusDays(30);

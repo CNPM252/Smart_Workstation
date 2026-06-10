@@ -18,6 +18,9 @@ export const DeviceProvider = ({ children }) => {
     const readerRef = useRef(null);
     const selectedDeviceMacRef = useRef('');
 
+    // 🚀 REF: Lưu trữ số đo mới nhất để bộ bơm API đọc ngầm
+    const latestSensorDataRef = useRef(null);
+
     const currentUserId = user?.id || user?.username;
 
     // 1. KỊCH BẢN 1: Bắt sự kiện tắt tab hoặc F5 đột ngột (Dùng Beacon API)
@@ -59,6 +62,29 @@ export const DeviceProvider = ({ children }) => {
             }
         };
     }, []);
+
+    // 3. 🚀 BỘ BƠM DỮ LIỆU TELEMETRY (1 GIÂY / LẦN)
+    useEffect(() => {
+        // Chỉ kích hoạt máy bơm khi đã kết nối mạch và xác định được User
+        if (!isConnected || !currentUserId) return;
+
+        const pumpInterval = setInterval(() => {
+            const currentData = latestSensorDataRef.current;
+
+            // Nếu có data và có địa chỉ MAC thì mới bắn API
+            if (currentData && currentData.macAddress) {
+                axiosClient.post('/api/devices/telemetry', {
+                    macAddress: currentData.macAddress,
+                    currentUserId: currentUserId,
+                    distance: currentData.distance,
+                    light: currentData.light
+                }).catch(err => console.error("Lỗi bơm data:", err));
+            }
+        }, 1000); // Tần suất: 1000ms = 1 giây
+
+        // Dọn dẹp đồng hồ bơm khi ngắt kết nối
+        return () => clearInterval(pumpInterval);
+    }, [isConnected, currentUserId]);
 
     const cleanupConnection = () => {
         setIsConnected(false);
@@ -115,19 +141,25 @@ export const DeviceProvider = ({ children }) => {
                             // Cập nhật REF phục vụ cho luồng dọn dẹp khẩn cấp
                             selectedDeviceMacRef.current = parsedJson.mac_address;
 
-                            // 🚀 BỘ LỌC NHIỄU SỐ ĐO TRƯỚC KHI ĐƯA VÀO STATE
-                            // Nếu cảm biến trả khoảng cách bậy do góc khuất, chuẩn hóa về khoảng cách Sleep an toàn
+                            // BỘ LỌC NHIỄU SỐ ĐO TRƯỚC KHI ĐƯA VÀO STATE
                             let filteredDistance = parsedJson.distance;
-                            if (filteredDistance < 0 || filteredDistance > 200) {
+                            if (filteredDistance < 20 || filteredDistance > 200) {
                                 filteredDistance = 0; // Đưa về trạng thái kích hoạt chế độ ngủ đông
                             }
 
-                            setSensorData({
+                            const newSensorData = {
                                 macAddress: parsedJson.mac_address,
                                 distance: filteredDistance,
                                 light: parsedJson.light,
                                 motion: parsedJson.motion
-                            });
+                            };
+
+                            // Đưa lên giao diện
+                            setSensorData(newSensorData);
+
+                            // 🚀 Cập nhật REF liên tục để bộ bơm Telemetry lấy đi bắn API
+                            latestSensorDataRef.current = newSensorData;
+
                         } catch (e) {
                             // Bỏ qua dòng dữ liệu rác nếu giải mã JSON lỗi
                         }
