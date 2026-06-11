@@ -6,6 +6,8 @@ import com.hcmut.backend.model.Device;
 import com.hcmut.backend.model.User;
 import com.hcmut.backend.repository.UserRepository;
 import com.hcmut.backend.service.DeviceService;
+import com.hcmut.backend.model.UserConfig;
+import com.hcmut.backend.repository.UserConfigRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -13,8 +15,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.JsonNode;
+import java.util.concurrent.TimeUnit;
 
+import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/devices")
@@ -28,6 +34,7 @@ public class DeviceController {
     private final DeviceService deviceService;
 
     private final UserRepository userRepository;
+    private final UserConfigRepository userConfigRepository;
 
     @PostMapping("/{macAddress}/check-in")
     public ResponseEntity<?> checkIn(@PathVariable String macAddress, @RequestParam String userId) {
@@ -98,24 +105,144 @@ public class DeviceController {
     @PostMapping("/telemetry")
     public ResponseEntity<?> receiveTelemetry(@RequestBody TelemetryRequest request) {
         try {
+            String finalUserId = request.getCurrentUserId();
+            String macAddress = request.getMacAddress();
+            long now = System.currentTimeMillis();
+
+            // 1.1 GHI VÀO REDIS QUEUE CHO CRON JOB
             ObjectNode logNode = objectMapper.createObjectNode();
-
-            logNode.put("deviceMacAddress", request.getMacAddress());
-
-            logNode.put("currentUserId", request.getCurrentUserId());
-
+            logNode.put("deviceMacAddress", macAddress);
+            logNode.put("currentUserId", finalUserId);
             logNode.put("lightValue", request.getLight());
             logNode.put("distanceValue", request.getDistance());
-            logNode.put("recordedAt", System.currentTimeMillis()); // Lấy timestamp hiện tại
+            // LƯU Ý: Nếu entity HistoryLog có cột motion, nên lưu thêm vào đây để phục vụ thống kê chính xác hơn
+            // logNode.put("motionValue", request.getMotion());
+            logNode.put("recordedAt", now);
+            stringRedisTemplate.opsForList().rightPush("history_log_queue", objectMapper.writeValueAsString(logNode));
 
-            String jsonLog = objectMapper.writeValueAsString(logNode);
+            // 1.2 KHỞI TẠO GIÁ TRỊ MẶC ĐỊNH
+            boolean autoDimActive = true;
+            int manualBrightness = 100;
+            boolean commandSleep = false;
 
-            // Đẩy vào Redis Queue (Bên phải đẩy vào, bên trái lấy ra)
-            stringRedisTemplate.opsForList().rightPush("history_log_queue", jsonLog);
+            // 1.3 TRUY XUẤT CẤU HÌNH & XỬ LÝ LOGIC NGỦ ĐÔNG
+            if (finalUserId != null && !finalUserId.startsWith("guest_")) {
+                try {
+                    int distMin = 40;
+                    int distMax = 70;
+                    long timeoutMins = 3;
 
-            return ResponseEntity.ok().build();
+                    // BƯỚC 1: TÌM TRONG REDIS TRƯỚC
+                    String configCacheKey = "user_config_cache:" + finalUserId;
+                    String cachedConfigStr = stringRedisTemplate.opsForValue().get(configCacheKey);
+
+                    if (cachedConfigStr != null) {
+                        JsonNode cacheNode = objectMapper.readTree(cachedConfigStr);
+                        autoDimActive = cacheNode.get("autoDimEnabled").asBoolean();
+                        manualBrightness = cacheNode.get("manualLightLevel").asInt();
+                        distMin = cacheNode.get("distanceThresholdMin").asInt();
+                        distMax = cacheNode.get("distanceThresholdMax").asInt();
+                        timeoutMins = cacheNode.get("sleepTimeoutMins").asLong();
+                    } else {
+                        UUID userUuid = null;
+                        if (finalUserId.contains("-") && finalUserId.length() == 36) {
+                            userUuid = UUID.fromString(finalUserId);
+                        } else {
+                            User user = userRepository.findByUsername(finalUserId).orElse(null);
+                            if (user != null) userUuid = user.getId();
+                        }
+
+                        if (userUuid != null) {
+                            UserConfig config = userConfigRepository.findByUserId(userUuid).orElse(null);
+                            if (config != null) {
+                                autoDimActive = config.getAutoDimEnabled();
+                                manualBrightness = config.getManualLightLevel();
+                                distMin = config.getDistanceThresholdMin();
+                                distMax = config.getDistanceThresholdMax();
+                                timeoutMins = config.getSleepTimeoutMins();
+
+                                ObjectNode cacheNode = objectMapper.createObjectNode();
+                                cacheNode.put("autoDimEnabled", autoDimActive);
+                                cacheNode.put("manualLightLevel", manualBrightness);
+                                cacheNode.put("distanceThresholdMin", distMin);
+                                cacheNode.put("distanceThresholdMax", distMax);
+                                cacheNode.put("sleepTimeoutMins", timeoutMins);
+
+                                stringRedisTemplate.opsForValue().set(configCacheKey, objectMapper.writeValueAsString(cacheNode), 1, TimeUnit.DAYS);
+                            }
+                        }
+                    }
+
+                    // BƯỚC 2: COMPOSITION FILTER V2 (Cửa sổ xác minh 30s)
+                    String lastActiveKey = "last_active:" + macAddress;
+                    String suspicionKey = "suspicion_start:" + macAddress;
+
+                    boolean hasMotion = Boolean.TRUE.equals(request.getMotion());
+                    int currentDist = request.getDistance();
+
+                    // Biên độ mở rộng (Tolerance)
+                    int lowerBound = (int) (distMin * 0.8);
+                    int upperBound = (int) (distMax * 1.2);
+
+                    boolean isImmediatelyPresent = hasMotion || (currentDist >= lowerBound && currentDist <= upperBound);
+                    boolean isPresent = false;
+
+                    if (isImmediatelyPresent) {
+                        stringRedisTemplate.delete(suspicionKey);
+                        isPresent = true;
+                    } else {
+                        String suspicionTimeStr = stringRedisTemplate.opsForValue().get(suspicionKey);
+                        if (suspicionTimeStr == null) {
+                            stringRedisTemplate.opsForValue().set(suspicionKey, String.valueOf(now));
+                            isPresent = true; // Bắt đầu 30s ân hạn
+                        } else {
+                            long suspicionTime = Long.parseLong(suspicionTimeStr);
+                            long timeInSuspicion = now - suspicionTime;
+
+                            if (timeInSuspicion >= 30 * 1000L) {
+                                isPresent = false; // Đã quá 30s -> Chính thức xác nhận Vắng mặt
+                            } else {
+                                isPresent = true; // Vẫn đang trong 30s ân hạn
+                            }
+                        }
+                    }
+
+                    // BƯỚC 3: XỬ LÝ TIME-OUT NGỦ ĐÔNG
+                    if (isPresent) {
+                        stringRedisTemplate.opsForValue().set(lastActiveKey, String.valueOf(now));
+                        commandSleep = false;
+                    } else {
+                        String lastActiveStr = stringRedisTemplate.opsForValue().get(lastActiveKey);
+                        if (lastActiveStr != null) {
+                            long lastActiveTime = Long.parseLong(lastActiveStr);
+                            long timeAwayMillis = now - lastActiveTime;
+                            long timeoutMillisLimit = timeoutMins * 60L * 1000L;
+
+                            if (timeAwayMillis > 24 * 60 * 60 * 1000L) {
+                                stringRedisTemplate.opsForValue().set(lastActiveKey, String.valueOf(now));
+                                commandSleep = false;
+                            } else if (timeAwayMillis > timeoutMillisLimit) {
+                                commandSleep = true;
+                            }
+                        } else {
+                            stringRedisTemplate.opsForValue().set(lastActiveKey, String.valueOf(now));
+                        }
+                    }
+                } catch (Exception e) {
+                    System.err.println("Lỗi xử lý Telemetry Cache: " + e.getMessage());
+                }
+            }
+
+            // ĐÓNG GÓI LỆNH TRẢ VỀ FRONTEND
+            Map<String, Object> commandResponse = new HashMap<>();
+            commandResponse.put("action", commandSleep ? "SLEEP" : "AWAKE");
+            commandResponse.put("autoDim", autoDimActive);
+            commandResponse.put("manualBrightness", manualBrightness);
+
+            return ResponseEntity.ok(commandResponse);
+
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Lỗi đẩy data vào Redis: " + e.getMessage());
+            return ResponseEntity.internalServerError().body("Lỗi xử lý Telemetry: " + e.getMessage());
         }
     }
 

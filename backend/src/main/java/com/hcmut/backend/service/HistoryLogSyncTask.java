@@ -34,7 +34,7 @@ public class HistoryLogSyncTask {
     private final UserRepository userRepository;
 
     // 15p sync 1 lan, test thi thanh 30000ms = 30s
-    @Scheduled(fixedRate = 30000)
+    @Scheduled(fixedRate = 60000)
     @Transactional
     public void syncLogsToDatabase() {
         String queueName = "history_log_queue";

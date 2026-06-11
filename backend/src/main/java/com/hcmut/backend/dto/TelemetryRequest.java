@@ -8,5 +8,7 @@ public class TelemetryRequest {
     private String currentUserId;
     private Integer distance;
     private Integer light;
+    private Boolean motion;
+    private String status;
 
 }

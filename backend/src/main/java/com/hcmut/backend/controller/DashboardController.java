@@ -40,12 +40,11 @@ public class DashboardController {
     @GetMapping("/today")
     public ResponseEntity<?> getTodayStats(@RequestParam String userId) {
         User user = userRepository.findByUsername(userId)
-            .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản!"));
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy tài khoản!"));
         LocalDateTime startOfDay = LocalDate.now().atStartOfDay();
         LocalDateTime now = LocalDateTime.now();
 
         List<HistoryLog> logs = historyLogRepository.findByCurrentUserIdAndRecordedAtBetween(user.getId().toString(), startOfDay, now);
-
 
         UserConfig config = null;
 
@@ -68,20 +67,25 @@ public class DashboardController {
         int goodPostureCount = 0;
         int sleepLogCount = 0;
 
-        // Lấy ngưỡng từ config, nếu không có thì dùng mặc định (40-70cm)
         int minDist = (config != null) ? config.getDistanceThresholdMin() : 40;
         int maxDist = (config != null) ? config.getDistanceThresholdMax() : 70;
+
+        // Cập nhật khoảng cách biên độ cho phép giống với luồng Telemetry
+        int lowerBound = (int) (minDist * 0.8);
+        int upperBound = (int) (maxDist * 1.2);
 
         for (HistoryLog log : logs) {
             int dist = log.getDistanceValue();
             sumDistance += dist;
 
+            // Đánh giá tư thế chuẩn (Strict Min-Max)
             if (dist >= minDist && dist <= maxDist) {
                 goodPostureCount++;
             }
 
-            //  Sleep được tính khi khoảng cách trả về 0 hoặc 200
-            if (dist == 0) {
+            // Đánh giá trạng thái Vắng mặt / Sleep (Dựa trên Tolerance Boundaries)
+            // Lịch sử sẽ ghi nhận là "sleep/away" nếu khoảng cách rơi ra ngoài ngưỡng cho phép
+            if (dist < lowerBound || dist > upperBound) {
                 sleepLogCount++;
             }
         }

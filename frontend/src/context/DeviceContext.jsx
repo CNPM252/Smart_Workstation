@@ -6,116 +6,144 @@ const DeviceContext = createContext();
 
 export const DeviceProvider = ({ children }) => {
     const { user } = useAuth();
+    const [isSleeping, setIsSleeping] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [sensorData, setSensorData] = useState({
-        macAddress: '',
-        distance: 0,
-        light: 0,
-        motion: false
+        macAddress: '', distance: 0, light: 0, motion: false
     });
 
     const portRef = useRef(null);
     const readerRef = useRef(null);
     const selectedDeviceMacRef = useRef('');
-
-    // 🚀 REF: Lưu trữ số đo mới nhất để bộ bơm API đọc ngầm
     const latestSensorDataRef = useRef(null);
+
+    // 🚀 REF: THEO DÕI THỜI GIAN TƯƠNG TÁC CUỐI CÙNG CỦA NGƯỜI DÙNG
+    const lastInteractionRef = useRef(Date.now());
 
     const currentUserId = user?.id || user?.username;
 
-    // 1. KỊCH BẢN 1: Bắt sự kiện tắt tab hoặc F5 đột ngột (Dùng Beacon API)
+    //  LẮNG NGHE SỰ KIỆN CHUỘT / BÀN PHÍM ĐỂ ĐÁNH THỨC
+    useEffect(() => {
+        const handleUserActivity = () => {
+            lastInteractionRef.current = Date.now();
+            // Tắt ngay màn hình đen để phản hồi tức thì
+            setIsSleeping(false);
+        };
+
+        window.addEventListener('mousemove', handleUserActivity);
+        window.addEventListener('keydown', handleUserActivity);
+        window.addEventListener('click', handleUserActivity);
+
+        return () => {
+            window.removeEventListener('mousemove', handleUserActivity);
+            window.removeEventListener('keydown', handleUserActivity);
+            window.removeEventListener('click', handleUserActivity);
+        };
+    }, []);
+
+    //  Xử lý Unload & Ngắt cáp vật lý
     useEffect(() => {
         const handleUnload = () => {
             if (isConnected && selectedDeviceMacRef.current) {
-                // Tái sử dụng chính xác RESTful API check-out hiện có của hệ thống
-                const url = `http://localhost:8080/api/devices/${selectedDeviceMacRef.current}/check-out`;
-                navigator.sendBeacon(url); // sendBeacon tự động gửi method POST ngầm
+                navigator.sendBeacon(`http://localhost:8080/api/devices/${selectedDeviceMacRef.current}/check-out`);
             }
         };
 
-        window.addEventListener('beforeunload', handleUnload);
-        return () => window.removeEventListener('beforeunload', handleUnload);
-    }, [isConnected]);
-
-    // 2. KỊCH BẢN 2: Bắt sự kiện rút nóng cáp USB vật lý
-    useEffect(() => {
         const handleSerialDisconnect = async () => {
             console.log("🔌 Cáp USB đã bị rút đột ngột!");
             cleanupConnection();
             if (selectedDeviceMacRef.current) {
                 try {
-                    // Trình duyệt vẫn sống -> Gọi axios để giải phóng thiết bị ngay lập tức
                     await axiosClient.post(`/api/devices/${selectedDeviceMacRef.current}/check-out`);
                     alert("🔌 Thiết bị đã bị ngắt kết nối vật lý. Phiên làm việc đã được giải phóng!");
                 } catch (err) {
-                    console.error("Lỗi giải phóng thiết bị khi rút cáp:", err);
+                    console.error("Lỗi giải phóng thiết bị:", err);
                 }
             }
         };
 
-        if (navigator.serial) {
-            navigator.serial.addEventListener('disconnect', handleSerialDisconnect);
-        }
-        return () => {
-            if (navigator.serial) {
-                navigator.serial.removeEventListener('disconnect', handleSerialDisconnect);
-            }
-        };
-    }, []);
+        window.addEventListener('beforeunload', handleUnload);
+        if (navigator.serial) navigator.serial.addEventListener('disconnect', handleSerialDisconnect);
 
-    // 3. 🚀 BỘ BƠM DỮ LIỆU TELEMETRY (1 GIÂY / LẦN)
+        return () => {
+            window.removeEventListener('beforeunload', handleUnload);
+            if (navigator.serial) navigator.serial.removeEventListener('disconnect', handleSerialDisconnect);
+        };
+    }, [isConnected]);
+
+    // Bộ bơm Telemetry & Đồng bộ lệnh
     useEffect(() => {
-        // Chỉ kích hoạt máy bơm khi đã kết nối mạch và xác định được User
         if (!isConnected || !currentUserId) return;
 
-        const pumpInterval = setInterval(() => {
+        const pumpInterval = setInterval(async () => {
             const currentData = latestSensorDataRef.current;
 
-            // Nếu có data và có địa chỉ MAC thì mới bắn API
             if (currentData && currentData.macAddress) {
-                axiosClient.post('/api/devices/telemetry', {
-                    macAddress: currentData.macAddress,
-                    currentUserId: currentUserId,
-                    distance: currentData.distance,
-                    light: currentData.light
-                }).catch(err => console.error("Lỗi bơm data:", err));
-            }
-        }, 1000); // Tần suất: 1000ms = 1 giây
+                try {
+                    const response = await axiosClient.post('/api/devices/telemetry', {
+                        macAddress: currentData.macAddress,
+                        currentUserId: currentUserId,
+                        distance: currentData.distance,
+                        light: currentData.light,
+                        motion: currentData.motion,
+                        status: isSleeping ? "sleeping" : "awake"
+                    });
 
-        // Dọn dẹp đồng hồ bơm khi ngắt kết nối
+                    const { action, autoDim, manualBrightness } = response.data;
+
+                    // 🚀 LOGIC ÂN HẠN (GRACE PERIOD) - ĐÃ NÂNG LÊN 30 GIÂY
+                    const timeSinceInteraction = Date.now() - lastInteractionRef.current;
+                    const isManuallyAwake = timeSinceInteraction < 30000;
+
+                    const finalAction = (action === "SLEEP" && !isManuallyAwake) ? "SLEEP" : "AWAKE";
+
+                    setIsSleeping(finalAction === "SLEEP");
+
+                    if (portRef.current && portRef.current.writable) {
+                        const writer = portRef.current.writable.getWriter();
+                        const serialPacket = JSON.stringify({
+                            cmd: finalAction,
+                            auto: autoDim,
+                            val: manualBrightness
+                        });
+                        await writer.write(new TextEncoder().encode(serialPacket + '\n'));
+                        writer.releaseLock();
+                    }
+                } catch (err) {
+                    console.error("Lỗi đồng bộ Telemetry:", err);
+                }
+            }
+        }, 1000);
+
         return () => clearInterval(pumpInterval);
-    }, [isConnected, currentUserId]);
+    }, [isConnected, currentUserId, isSleeping]);
 
     const cleanupConnection = () => {
         setIsConnected(false);
+        setIsSleeping(false);
         portRef.current = null;
         readerRef.current = null;
     };
 
-    // Hàm kết nối cổng COM toàn cục
+    //  Kết nối & Đọc Serial
     const connectDevice = async () => {
         try {
             const port = await navigator.serial.requestPort();
             await port.open({ baudRate: 115200 });
-
-            // Lá bùa nhả chân CPU chống Reset mạch
             await port.setSignals({ dataTerminalReady: true, requestToSend: true });
 
             portRef.current = port;
             setIsConnected(true);
-
-            // Kích hoạt luồng đọc dữ liệu nền bất đồng bộ
             readSerialData();
         } catch (error) {
-            console.error("Lỗi kết nối Web Serial:", error);
+            console.error("Lỗi Web Serial:", error);
             alert("Không thể kết nối tới thiết bị!");
         }
     };
 
-    // Vòng lặp đọc dữ liệu liên tục chạy ở Background
     const readSerialData = async () => {
         const textDecoder = new TextDecoderStream();
-        const readableStreamClosed = portRef.current.readable.pipeTo(textDecoder.writable);
+        portRef.current.readable.pipeTo(textDecoder.writable);
         const reader = textDecoder.readable.getReader();
         readerRef.current = reader;
 
@@ -129,7 +157,7 @@ export const DeviceProvider = ({ children }) => {
                 if (value) {
                     buffer += value;
                     const lines = buffer.split('\n');
-                    buffer = lines.pop(); // Giữ lại dòng chưa hoàn chỉnh cuối cùng
+                    buffer = lines.pop();
 
                     for (const line of lines) {
                         try {
@@ -137,44 +165,48 @@ export const DeviceProvider = ({ children }) => {
                             if (!cleanedLine.startsWith('{')) continue;
 
                             const parsedJson = JSON.parse(cleanedLine);
-
-                            // Cập nhật REF phục vụ cho luồng dọn dẹp khẩn cấp
                             selectedDeviceMacRef.current = parsedJson.mac_address;
-
-                            // BỘ LỌC NHIỄU SỐ ĐO TRƯỚC KHI ĐƯA VÀO STATE
-                            let filteredDistance = parsedJson.distance;
-                            if (filteredDistance < 20 || filteredDistance > 200) {
-                                filteredDistance = 0; // Đưa về trạng thái kích hoạt chế độ ngủ đông
-                            }
 
                             const newSensorData = {
                                 macAddress: parsedJson.mac_address,
-                                distance: filteredDistance,
+                                distance: parsedJson.distance,
                                 light: parsedJson.light,
                                 motion: parsedJson.motion
                             };
 
-                            // Đưa lên giao diện
                             setSensorData(newSensorData);
-
-                            // 🚀 Cập nhật REF liên tục để bộ bơm Telemetry lấy đi bắn API
                             latestSensorDataRef.current = newSensorData;
-
                         } catch (e) {
-                            // Bỏ qua dòng dữ liệu rác nếu giải mã JSON lỗi
+                            // Bỏ qua rác JSON
                         }
                     }
                 }
             }
         } catch (error) {
-            console.error("Luồng đọc Serial bị ngắt:", error);
+            console.error("Ngắt luồng đọc Serial:", error);
         } finally {
             reader.releaseLock();
         }
     };
 
     return (
-        <DeviceContext.Provider value={{ isConnected, sensorData, connectDevice }}>
+        <DeviceContext.Provider value={{ isConnected, isSleeping, sensorData, connectDevice, portRef }}>
+            {/* 🚀 LỚP PHỦ OVERLAY ĐEN 95% */}
+            {isSleeping && (
+                <div
+                    className="fixed inset-0 z-9999 bg-black/95 flex flex-col items-center justify-center transition-opacity duration-500"
+                    style={{ backdropFilter: 'blur(6px)' }}
+                >
+                    <div className="text-white text-center pointer-events-none">
+                        <div className="text-6xl mb-4 animate-pulse">🌙</div>
+                        <h1 className="text-4xl font-bold mb-2 text-gray-300">Đang ngủ đông... Zzz</h1>
+                        <p className="text-lg text-gray-300">Hệ thống đang tự động tiết kiệm năng lượng.</p>
+                        <p className="text-sm text-gray-400 mt-6">Hãy ngồi vào bàn làm việc hoặc di chuyển chuột để đánh thức hệ thống.</p>
+                    </div>
+                </div>
+            )}
+
+            {/* NỘI DUNG WEB BÊN DƯỚI */}
             {children}
         </DeviceContext.Provider>
     );

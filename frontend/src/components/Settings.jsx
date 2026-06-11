@@ -8,7 +8,7 @@ const Settings = () => {
   const { user, isGuest } = useAuth();
 
   // Lấy trạng thái và data real-time từ cổng COM
-  const { isConnected, sensorData, connectDevice } = useDevice();
+  const { isConnected, sensorData, connectDevice, portRef } = useDevice();
 
   const [config, setConfig] = useState({
     distanceThresholdMin: 40,
@@ -58,12 +58,32 @@ const Settings = () => {
     fetchConfig();
   }, [currentUserId, user]);
 
+
+
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setConfig({
       ...config,
       [name]: type === 'checkbox' ? checked : Number(value)
     });
+  };
+
+
+  const previewLightLevel = async (brightnessVal) => {
+    if (portRef && portRef.current && portRef.current.writable) {
+      try {
+        const writer = portRef.current.writable.getWriter();
+        const serialPacket = JSON.stringify({
+          cmd: "AWAKE",
+          auto: false,
+          val: Number(brightnessVal)
+        });
+        await writer.write(new TextEncoder().encode(serialPacket + '\n'));
+        writer.releaseLock();
+      } catch (err) {
+
+      }
+    }
   };
 
   // ==========================================
@@ -251,7 +271,10 @@ const Settings = () => {
                     name="manualLightLevel"
                     min="0" max="100"
                     value={config.manualLightLevel}
-                    onChange={handleChange}
+                    onChange={(e) => {
+                      handleChange(e); // lưu state
+                      previewLightLevel(e.target.value); // Bắn lệnh Real-time
+                    }}
                 />
               </div>
           )}
@@ -309,7 +332,7 @@ const Settings = () => {
                           onClick={connectDevice}
                           style={{ backgroundColor: '#0284c7', color: 'white', padding: '10px 20px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
                       >
-                        🔌 Kết nối Yolo:Bit
+                         Kết nối Yolo:Bit
                       </button>
                     </div>
                 ) : (

@@ -7,9 +7,11 @@ import com.hcmut.backend.repository.UserConfigRepository;
 import com.hcmut.backend.repository.UserRepository;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
@@ -21,6 +23,9 @@ public class UserConfigService {
 
     @Autowired
     private UserConfigRepository userConfigRepository;
+
+    @Autowired
+    private StringRedisTemplate stringRedisTemplate;
 
     @Autowired
     private RedisTemplate<String, Object>  redisTemplate;
@@ -56,14 +61,28 @@ public class UserConfigService {
     public UserConfig updateUserConfig(String username, UserConfig configData) {
         UserConfig existingConfig = getUserConfig(username);
 
-        existingConfig.setDistanceThresholdMin(configData.getDistanceThresholdMin());
-        existingConfig.setDistanceThresholdMax(configData.getDistanceThresholdMax());
-        existingConfig.setAutoDimEnabled(configData.getAutoDimEnabled());
-        existingConfig.setManualLightLevel(configData.getManualLightLevel());
-        existingConfig.setAutoSleepEnabled(configData.getAutoSleepEnabled());
-        existingConfig.setSleepTimeoutMins(configData.getSleepTimeoutMins());
+        if (configData.getDistanceThresholdMin() != null)
+            existingConfig.setDistanceThresholdMin(configData.getDistanceThresholdMin());
+
+        if (configData.getDistanceThresholdMax() != null)
+            existingConfig.setDistanceThresholdMax(configData.getDistanceThresholdMax());
+
+        if (configData.getAutoDimEnabled() != null)
+            existingConfig.setAutoDimEnabled(configData.getAutoDimEnabled());
+
+        if (configData.getManualLightLevel() != null)
+            existingConfig.setManualLightLevel(configData.getManualLightLevel());
+
+        if (configData.getAutoSleepEnabled() != null)
+            existingConfig.setAutoSleepEnabled(configData.getAutoSleepEnabled());
+
+        if (configData.getSleepTimeoutMins() != null)
+            existingConfig.setSleepTimeoutMins(configData.getSleepTimeoutMins());
 
         UserConfig savedConfig = userConfigRepository.save(existingConfig);
+
+
+        stringRedisTemplate.delete("user_config_cache:" + username);
 
         System.out.println("=== DEBUG MQTT ===");
         System.out.println("Đang tìm máy cho user: [" + username + "]");
