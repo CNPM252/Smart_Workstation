@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { ResponsiveContainer, LineChart, CartesianGrid, XAxis, YAxis, Tooltip as RechartsTooltip, Line } from 'recharts';
 import CalendarHeatmap from 'react-calendar-heatmap';
 import { Tooltip as ReactTooltip } from 'react-tooltip';
+import { Clock, UserCheck, Ruler, Leaf, BarChart3, CalendarDays } from 'lucide-react'; // 🚀 IMPORT LUCIDE ICONS
 import 'react-calendar-heatmap/dist/styles.css';
 import 'react-tooltip/dist/react-tooltip.css';
 import '../styles/Dashboard.css';
@@ -21,21 +22,12 @@ const Dashboard = () => {
   const [message, setMessage] = useState('');
 
   const [chartView, setChartView] = useState('week');
-  const [chartData, setChartData] = useState([])
-
-  // Mock data biểu đồ
-  // const chartData = [
-  //   { day: 'T2', hours: 3 }, { day: 'T3', hours: 4.5 },
-  //   { day: 'T4', hours: 2 }, { day: 'T5', hours: 5 },
-  //   { day: 'T6', hours: 4.2 }, { day: 'T7', hours: 1 },
-  //   { day: 'CN', hours: 0 },
-  // ];
+  const [chartData, setChartData] = useState([]);
 
   const currentUserId = isGuest
       ? sessionStorage.getItem('guestId')
       : (user?.id || user?.userId || user?.uuid || user?.username || (typeof user === 'string' ? user : ''));
 
-  // Xác định năm hiện tại (2026)
   const currentYear = new Date().getFullYear();
   const startDate = new Date(`${currentYear}-01-01`);
   const endDate = new Date(`${currentYear}-12-31`);
@@ -45,13 +37,10 @@ const Dashboard = () => {
       if (!currentUserId) return;
 
       try {
-        // Quyết định gọi API nào dựa trên giá trị của dropdown
         const endpoint = chartView === 'week' ? '/api/dashboard/weekly-chart' : '/api/dashboard/monthly-chart';
-
         const res = await axiosClient.get(endpoint, {
           params: { userId: currentUserId }
         });
-
         setChartData(res.data);
       } catch (error) {
         console.error("Lỗi lấy dữ liệu biểu đồ:", error);
@@ -66,7 +55,6 @@ const Dashboard = () => {
       if (!currentUserId) return;
 
       try {
-        // 1. Fetch Today Stats
         const todayRes = await axiosClient.get('/api/dashboard/today', {
           params: { userId: currentUserId }
         });
@@ -83,7 +71,6 @@ const Dashboard = () => {
           setMessage('');
         }
 
-        // 2. Fetch Heatmap Data (Chỉ lấy nếu không phải Guest)
         if (!isGuest) {
           const heatmapRes = await axiosClient.get('/api/dashboard/heatmap', {
             params: { userId: currentUserId, year: currentYear }
@@ -92,8 +79,6 @@ const Dashboard = () => {
             setHeatmapData(heatmapRes.data);
           }
         }
-
-        // ĐÃ XÓA BƯỚC 3 (Fetch weekly data) VÌ USE-EFFECT TRÊN ĐÃ LO RỒI
 
       } catch (error) {
         console.error("Lỗi khi tải dữ liệu Dashboard:", error);
@@ -111,36 +96,49 @@ const Dashboard = () => {
             </div>
         )}
 
-        {/* Hàng 1: Các chỉ số KPI */}
-        <div className="kpi-grid">
-          <div className="kpi-card">
-            <div className="kpi-title">Đã ngồi hôm nay</div>
-            <div className="kpi-value blue">{kpiData.sittingHours} giờ</div>
+        {/* 🚀 Hàng 1: Các chỉ số KPI (Đã căn giữa tuyệt đối) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="flex flex-col items-center justify-center bg-white p-6 rounded-xl border border-gray-100 shadow-sm min-h-[140px]">
+            <div className="flex items-center justify-center gap-2 text-gray-500 font-medium mb-3">
+              <Clock size={20} className="text-blue-500" />
+              <span className="leading-none mt-[2px]">Đã ngồi hôm nay</span>
+            </div>
+            <div className="text-3xl font-bold text-blue-600 leading-none">{kpiData.sittingHours} giờ</div>
           </div>
-          <div className="kpi-card">
-            <div className="kpi-title">Tỷ lệ tư thế chuẩn</div>
-            <div className="kpi-value green">{kpiData.posturePercent}%</div>
+
+          <div className="flex flex-col items-center justify-center bg-white p-6 rounded-xl border border-gray-100 shadow-sm min-h-[140px]">
+            <div className="flex items-center justify-center gap-2 text-gray-500 font-medium mb-3">
+              <UserCheck size={20} className="text-emerald-500" />
+              <span className="leading-none mt-[2px]">Tỷ lệ tư thế chuẩn</span>
+            </div>
+            <div className="text-3xl font-bold text-emerald-600 leading-none">{kpiData.posturePercent}%</div>
           </div>
-          <div className="kpi-card">
-            <div className="kpi-title">Khoảng cách thường giữ</div>
-            <div className="kpi-value purple">{kpiData.averageDistance} cm</div>
+
+          <div className="flex flex-col items-center justify-center bg-white p-6 rounded-xl border border-gray-100 shadow-sm min-h-[140px]">
+            <div className="flex items-center justify-center gap-2 text-gray-500 font-medium mb-3">
+              <Ruler size={20} className="text-purple-500" />
+              <span className="leading-none mt-[2px]">Khoảng cách thường giữ</span>
+            </div>
+            <div className="text-3xl font-bold text-purple-600 leading-none">{kpiData.averageDistance} cm</div>
           </div>
-          <div className="kpi-card">
-            <div className="kpi-title">Tài nguyên tiết kiệm</div>
-            <div className="kpi-value orange">{kpiData.sleepHours} giờ</div>
+
+          <div className="flex flex-col items-center justify-center bg-white p-6 rounded-xl border border-gray-100 shadow-sm min-h-[140px]">
+            <div className="flex items-center justify-center gap-2 text-gray-500 font-medium mb-3">
+              <Leaf size={20} className="text-orange-500" />
+              <span className="leading-none mt-[2px]">Tài nguyên tiết kiệm</span>
+            </div>
+            <div className="text-3xl font-bold text-orange-600 leading-none">{kpiData.sleepHours} giờ</div>
           </div>
         </div>
 
-
-
-
-        {/* Hàng 2: Biểu đồ */}
-
+        {/* 🚀 Hàng 2: Biểu đồ (Đã bổ sung Icon tiêu đề) */}
         <div className="card border p-6 rounded-lg shadow-sm bg-white mt-6">
           <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold text-gray-800">Thống kê thời gian ngồi</h3>
+            <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+              <BarChart3 size={22} className="text-blue-600" />
+              Thống kê thời gian ngồi
+            </h3>
 
-            {/* Dropdown điều khiển State chartView */}
             <select
                 className="border border-gray-300 rounded-md p-2 outline-none focus:border-blue-500 font-medium text-gray-700"
                 value={chartView}
@@ -162,25 +160,22 @@ const Dashboard = () => {
                     tickLine={false}
                     tick={{ fill: '#888', fontSize: 12, fontWeight: 500 }}
                     dy={10}
-                    interval={0} // Bắt buộc = 0 để Recharts không tự ý bỏ qua các điểm data
+                    interval={0}
                     tickFormatter={(value, index) => {
                       if (chartView === 'month') {
-                        // Logic lọc thần thánh: Chỉ hiển thị các mốc tuần, giấu đi các ngày còn lại
                         if (index === 0) return 'Tuần 1';
                         if (index === 7) return 'Tuần 2';
                         if (index === 14) return 'Tuần 3';
                         if (index === 21) return 'Tuần 4';
                         if (index === 28) return 'Tuần 5';
-                        return ''; // Ẩn hoàn toàn để không bị đè chữ
+                        return '';
                       }
-                      // Nếu xem theo tuần thì trả về giá trị gốc (T2, T3...)
                       return value;
                     }}
                 />
 
                 <YAxis axisLine={false} tickLine={false} tick={{ fill: '#888', fontSize: 12 }} />
 
-                {/* Custom lại Tooltip để hiện tiếng Việt cho chuyên nghiệp */}
                 <RechartsTooltip
                     formatter={(value) => [`${value} giờ`, 'Thời gian ngồi']}
                     labelStyle={{ fontWeight: 'bold', color: '#374151' }}
@@ -194,19 +189,20 @@ const Dashboard = () => {
                     strokeWidth={3}
                     dot={{ r: 4, strokeWidth: 2, fill: '#fff', stroke: '#3b82f6' }}
                     activeDot={{ r: 6, fill: '#3b82f6', stroke: '#fff', strokeWidth: 2 }}
-                    animationDuration={1500} // Hiệu ứng trôi từ từ lúc mới load
+                    animationDuration={1500}
                 />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </div>
 
-
-
-        {/* Hàng 3: Heatmap GitHub Contributions */}
+        {/* 🚀 Hàng 3: Heatmap GitHub Contributions (Đã bổ sung Icon tiêu đề) */}
         {!isGuest && (
-            <div className="heatmap-card">
-              <h3>Mức độ chăm chỉ trong năm {currentYear}</h3>
+            <div className="heatmap-card mt-6 p-6 bg-white rounded-lg border border-gray-200 shadow-sm">
+              <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
+                <CalendarDays size={22} className="text-emerald-600" />
+                Mức độ chăm chỉ trong năm {currentYear}
+              </h3>
               <div className="heatmap-wrapper">
                 <CalendarHeatmap
                     startDate={startDate}
@@ -222,7 +218,6 @@ const Dashboard = () => {
                       if (!value || !value.date) {
                         return { 'data-tooltip-id': 'heatmap-tooltip', 'data-tooltip-content': 'Chưa có dữ liệu' };
                       }
-                      // Format Tooltip hiển thị
                       return {
                         'data-tooltip-id': 'heatmap-tooltip',
                         'data-tooltip-content': `Ngày ${value.date}: Ngồi ${value.minutes} phút`,
@@ -232,14 +227,13 @@ const Dashboard = () => {
                 <ReactTooltip id="heatmap-tooltip" />
               </div>
 
-              {/* Chú thích màu sắc */}
-              <div className="heatmap-legend">
+              <div className="heatmap-legend mt-4 flex items-center gap-2 text-sm text-gray-600">
                 <span>Ít</span>
-                <div className="legend-box color-empty"></div>
-                <div className="legend-box color-scale-1"></div>
-                <div className="legend-box color-scale-2"></div>
-                <div className="legend-box color-scale-3"></div>
-                <div className="legend-box color-scale-4"></div>
+                <div className="legend-box color-empty w-4 h-4 rounded-sm bg-gray-100"></div>
+                <div className="legend-box color-scale-1 w-4 h-4 rounded-sm bg-emerald-200"></div>
+                <div className="legend-box color-scale-2 w-4 h-4 rounded-sm bg-emerald-400"></div>
+                <div className="legend-box color-scale-3 w-4 h-4 rounded-sm bg-emerald-600"></div>
+                <div className="legend-box color-scale-4 w-4 h-4 rounded-sm bg-emerald-800"></div>
                 <span>Nhiều</span>
               </div>
             </div>
@@ -247,7 +241,5 @@ const Dashboard = () => {
       </div>
   );
 };
-
-
 
 export default Dashboard;

@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import axiosClient from '../api/axiosClient';
 import { useAuth } from '../context/AuthContext';
 import { useDevice } from '../context/DeviceContext';
-import '../styles/Settings.css';
+import { Target, Save, Activity, Settings2, Unplug, CheckCircle2, XCircle } from 'lucide-react';
+// Import CSS nếu sếp vẫn xài file cũ, hoặc bỏ đi nếu đã full Tailwind
+// import '../styles/Settings.css';
 
 const Settings = () => {
   const { user, isGuest } = useAuth();
-
-  // Lấy trạng thái và data real-time từ cổng COM
-  const { isConnected, sensorData, connectDevice, portRef } = useDevice();
+  const { isConnected, sensorData } = useDevice(); // Không cần connectDevice ở đây nữa
 
   const [config, setConfig] = useState({
     distanceThresholdMin: 40,
@@ -19,16 +19,10 @@ const Settings = () => {
     sleepTimeoutMins: 3
   });
 
-  // ==========================================
-  // STATE CHO TÍNH NĂNG CÂN CHỈNH (CALIBRATION)
-  // ==========================================
   const [isCalibrating, setIsCalibrating] = useState(false);
-  const [calibStep, setCalibStep] = useState(0); // 0: Tắt, 1: Đo Min, 2: Đo Max, 3: Xong
+  const [calibStep, setCalibStep] = useState(0);
   const [tempMin, setTempMin] = useState(0);
   const [tempMax, setTempMax] = useState(0);
-
-  // STATE CHO KHUNG XEM REAL-TIME
-  const [showRealTime, setShowRealTime] = useState(false);
 
   const currentUserId = isGuest
       ? sessionStorage.getItem('guestId')
@@ -39,7 +33,6 @@ const Settings = () => {
       if (!currentUserId) return;
       try {
         const res = await axiosClient.get(`/api/workstations/${currentUserId}/config`);
-
         if (res.data) {
           setConfig(prev => ({
             ...prev,
@@ -58,8 +51,6 @@ const Settings = () => {
     fetchConfig();
   }, [currentUserId, user]);
 
-
-
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
     setConfig({
@@ -68,27 +59,6 @@ const Settings = () => {
     });
   };
 
-
-  const previewLightLevel = async (brightnessVal) => {
-    if (portRef && portRef.current && portRef.current.writable) {
-      try {
-        const writer = portRef.current.writable.getWriter();
-        const serialPacket = JSON.stringify({
-          cmd: "AWAKE",
-          auto: false,
-          val: Number(brightnessVal)
-        });
-        await writer.write(new TextEncoder().encode(serialPacket + '\n'));
-        writer.releaseLock();
-      } catch (err) {
-
-      }
-    }
-  };
-
-  // ==========================================
-  // HÀM KIỂM TRA GIỚI HẠN (VALIDATION)
-  // ==========================================
   const validateConfig = (cfg) => {
     if (cfg.distanceThresholdMin < 20) return "Khoảng cách Min không được nhỏ hơn 20 cm!";
     if (cfg.distanceThresholdMax > 200) return "Khoảng cách Max không được vượt quá 200 cm!";
@@ -96,31 +66,22 @@ const Settings = () => {
     if (cfg.autoSleepEnabled && (cfg.sleepTimeoutMins < 1 || cfg.sleepTimeoutMins > 60)) {
       return "Thời gian chờ Sleep chỉ được phép cài đặt từ 1 đến 60 phút!";
     }
-    return null; // Hợp lệ
+    return null;
   };
 
-  // ==========================================
-  // LƯU CẤU HÌNH (TỪ FORM VÀ TỪ CÂN CHỈNH)
-  // ==========================================
   const saveConfigToBackend = async (configToSave) => {
-    if (!currentUserId) {
-      alert("Không tìm thấy ID người dùng!");
-      return false;
-    }
-
+    if (!currentUserId) return false;
     const errorMsg = validateConfig(configToSave);
     if (errorMsg) {
-      alert("⚠️ Lỗi cài đặt: " + errorMsg);
+      alert("Lỗi cài đặt: " + errorMsg);
       return false;
     }
-
     try {
       await axiosClient.put(`/api/workstations/${currentUserId}/config`, configToSave);
-      alert("✅ Đã lưu cấu hình thành công!");
+      alert("Đã lưu cấu hình thành công!");
       return true;
     } catch (error) {
-      console.error("Lỗi khi lưu cấu hình:", error);
-      alert("Có lỗi xảy ra khi lưu! Vui lòng kiểm tra lại kết nối.");
+      alert("Có lỗi xảy ra khi lưu!");
       return false;
     }
   };
@@ -129,41 +90,23 @@ const Settings = () => {
     await saveConfigToBackend(config);
   };
 
-  // ==========================================
-  // LOGIC XỬ LÝ CÂN CHỈNH
-  // ==========================================
+  // --- LOGIC CÂN CHỈNH ---
   const startCalibration = () => {
     if (!isConnected) {
-      alert("⚠️ Bạn cần kết nối thiết bị Yolo:Bit trước khi cân chỉnh!");
+      alert("Bạn cần kết nối thiết bị trước khi cân chỉnh!");
       return;
     }
     setIsCalibrating(true);
-    setCalibStep(1); // Bắt đầu bước 1: Đo Min
+    setCalibStep(1);
   };
 
-  const recordMin = () => {
-    setTempMin(sensorData.distance);
-    setCalibStep(2); // Chuyển sang bước 2: Đo Max
-  };
-
-  const recordMax = () => {
-    setTempMax(sensorData.distance);
-    setCalibStep(3); // Hoàn tất đo
-  };
-
+  const recordMin = () => { setTempMin(sensorData.distance); setCalibStep(2); };
+  const recordMax = () => { setTempMax(sensorData.distance); setCalibStep(3); };
   const applyCalibration = async () => {
     const finalMin = Math.min(tempMin, tempMax);
     const finalMax = Math.max(tempMin, tempMax);
-
-    const updatedConfig = {
-      ...config,
-      distanceThresholdMin: finalMin,
-      distanceThresholdMax: finalMax
-    };
-
-    // Gọi API lưu ngay lập tức
+    const updatedConfig = { ...config, distanceThresholdMin: finalMin, distanceThresholdMax: finalMax };
     const isSuccess = await saveConfigToBackend(updatedConfig);
-
     if (isSuccess) {
       setConfig(updatedConfig);
       setIsCalibrating(false);
@@ -172,189 +115,180 @@ const Settings = () => {
   };
 
   return (
-      <div className="settings-container">
-        <div className="settings-card">
+      <div className="min-h-screen bg-gray-50 p-8 flex justify-center">
+        <div className="bg-white w-full max-w-3xl rounded-xl shadow-sm border border-gray-100 p-8 flex flex-col items-center relative">
 
-          {/* HEADER CHỨA NÚT CÂN CHỈNH */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-            <h2 className="settings-title" style={{ margin: 0 }}>Cấu hình hệ thống</h2>
+          {/* NÚT CÂN CHỈNH TÁCH BIỆT TRÊN CÙNG */}
+          <button
+              onClick={startCalibration}
+              className="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-2.5 rounded-lg font-semibold transition-all shadow-sm mb-8"
+          >
+            <Target size={20} />
+            Cân chỉnh số đo thiết bị
+          </button>
+
+          <h2 className="text-2xl font-bold text-gray-800 mb-8 flex items-center gap-2">
+            <Settings2 size={24} className="text-blue-600" />
+            Cấu hình hệ thống
+          </h2>
+
+          {/* KHU VỰC CÂN CHỈNH */}
+          {isCalibrating && (
+              <div className="w-full bg-emerald-50 border border-emerald-200 p-6 rounded-lg mb-8">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-emerald-800 font-semibold flex items-center gap-2">
+                    <Target size={18} /> Trợ lý Cân chỉnh Tư thế
+                  </h3>
+                  <button onClick={() => setIsCalibrating(false)} className="text-red-500 hover:text-red-700">
+                    <XCircle size={20} />
+                  </button>
+                </div>
+
+                {calibStep === 1 && (
+                    <div className="flex flex-col items-center text-center">
+                      <p className="text-emerald-700 mb-4"><strong>Bước 1:</strong> Ngồi thẳng lưng ở tư thế làm việc chuẩn (gần nhất) và bấm Ghi nhận.</p>
+                      <div className="flex items-center gap-4">
+                        <span className="text-3xl font-bold text-emerald-600">{sensorData.distance} cm</span>
+                        <button onClick={recordMin} className="bg-emerald-600 text-white px-4 py-2 rounded-md hover:bg-emerald-700 transition">Ghi nhận Min</button>
+                      </div>
+                    </div>
+                )}
+                {calibStep === 2 && (
+                    <div className="flex flex-col items-center text-center">
+                      <p className="text-emerald-700 mb-4"><strong>Bước 2:</strong> Ngả lưng ra sau ở tư thế thư giãn (xa nhất) và bấm Ghi nhận.</p>
+                      <div className="flex items-center gap-4">
+                        <span className="text-3xl font-bold text-emerald-600">{sensorData.distance} cm</span>
+                        <button onClick={recordMax} className="bg-emerald-600 text-white px-4 py-2 rounded-md hover:bg-emerald-700 transition">Ghi nhận Max</button>
+                      </div>
+                    </div>
+                )}
+                {calibStep === 3 && (
+                    <div className="flex flex-col items-center text-center">
+                      <p className="text-emerald-700 mb-4"><strong>Hoàn tất!</strong> Dải khoảng cách an toàn của bạn là:</p>
+                      <div className="flex items-center gap-4">
+                        <span className="text-xl font-bold text-emerald-600">{Math.min(tempMin, tempMax)} cm ➔ {Math.max(tempMin, tempMax)} cm</span>
+                        <button onClick={applyCalibration} className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2 rounded-md font-bold hover:bg-emerald-700 transition">
+                          <Save size={18} /> Áp dụng
+                        </button>
+                      </div>
+                    </div>
+                )}
+              </div>
+          )}
+
+          {/* KHU VỰC CÀI ĐẶT CĂN GIỮA */}
+          <div className="w-full max-w-lg flex flex-col items-center gap-6">
+            <div className="flex gap-4 w-full">
+              <div className="flex-1 flex flex-col items-center">
+                <label className="text-sm text-gray-600 mb-2 font-medium">Khoảng cách gần nhất (cm)</label>
+                <input
+                    type="number" name="distanceThresholdMin"
+                    value={config.distanceThresholdMin} onChange={handleChange}
+                    className="w-full text-center px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+              <div className="flex-1 flex flex-col items-center">
+                <label className="text-sm text-gray-600 mb-2 font-medium">Khoảng cách xa nhất (cm)</label>
+                <input
+                    type="number" name="distanceThresholdMax"
+                    value={config.distanceThresholdMax} onChange={handleChange}
+                    className="w-full text-center px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="w-full border-t border-gray-100 my-2"></div>
+
+            <div className="w-full flex items-center justify-start gap-3 px-4">
+              <input
+                  type="checkbox" id="autoDimEnabled" name="autoDimEnabled"
+                  checked={config.autoDimEnabled} onChange={handleChange}
+                  className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+              />
+              <label htmlFor="autoDimEnabled" className="text-gray-700 font-medium cursor-pointer">Auto-dim (Tự động điều chỉnh độ sáng)</label>
+            </div>
+
+            {!config.autoDimEnabled && (
+                <div className="w-full px-4 flex flex-col items-center bg-gray-50 p-4 rounded-lg">
+                  <div className="w-full flex justify-between mb-2">
+                    <span className="text-gray-600">Độ sáng thủ công:</span>
+                    <span className="font-bold text-blue-600">{config.manualLightLevel}%</span>
+                  </div>
+                  <input
+                      type="range" name="manualLightLevel" min="0" max="100"
+                      value={config.manualLightLevel} onChange={handleChange}
+                      className="w-full accent-blue-600 cursor-pointer"
+                  />
+                </div>
+            )}
+
+            <div className="w-full border-t border-gray-100 my-2"></div>
+
+            <div className="w-full flex items-center justify-start gap-3 px-4">
+              <input
+                  type="checkbox" id="autoSleepEnabled" name="autoSleepEnabled"
+                  checked={config.autoSleepEnabled} onChange={handleChange}
+                  className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+              />
+              <label htmlFor="autoSleepEnabled" className="text-gray-700 font-medium cursor-pointer">Auto-sleep (Tự động tắt khi vắng mặt)</label>
+            </div>
+
+            {config.autoSleepEnabled && (
+                <div className="w-full px-4 flex flex-col items-center bg-gray-50 p-4 rounded-lg">
+                  <label className="text-gray-600 mb-2">Thời gian chờ trước khi Sleep (phút)</label>
+                  <input
+                      type="number" name="sleepTimeoutMins"
+                      value={config.sleepTimeoutMins} onChange={handleChange}
+                      className="w-32 text-center px-4 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+            )}
+
             <button
-                onClick={startCalibration}
-                style={{ backgroundColor: '#10b981', color: '#fff', padding: '8px 16px', borderRadius: '6px', fontWeight: 'bold', border: 'none', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
+                onClick={handleSave}
+                className="mt-6 w-full max-w-xs flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg font-bold transition-colors shadow-md"
             >
-              🎯 Cân chỉnh số đo
+              <Save size={20} />
+              Lưu Cài Đặt
             </button>
           </div>
 
-          {/* KHU VỰC UI CÂN CHỈNH (Hiển thị khi bấm nút) */}
-          {isCalibrating && (
-              <div style={{ backgroundColor: '#f0fdf4', border: '1px solid #86efac', padding: '16px', borderRadius: '8px', marginBottom: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                  <h3 style={{ color: '#166534', margin: 0, fontSize: '16px' }}>Trợ lý Cân chỉnh Tư thế</h3>
-                  <button onClick={() => setIsCalibrating(false)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✕ Hủy</button>
+          {/* KHU VỰC HIỂN THỊ REAL-TIME THỤ ĐỘNG DƯỚI CÙNG */}
+          <div className="w-full mt-12 pt-8 border-t border-gray-200">
+            <h3 className="text-lg font-bold text-gray-700 mb-6 flex items-center justify-center gap-2">
+              <Activity size={20} className="text-blue-500" />
+              Trạng thái thiết bị Real-time
+            </h3>
+
+            {!isConnected ? (
+                <div className="flex flex-col items-center text-gray-400">
+                  <Unplug size={48} className="mb-2 opacity-50" />
+                  <p>Không có thiết bị được kết nối</p>
+                  <p className="text-sm mt-1">Vui lòng kết nối qua Sidebar để xem số đo.</p>
                 </div>
-
-                {/* Vòng lặp hiển thị theo Step */}
-                {calibStep === 1 && (
-                    <div>
-                      <p style={{ fontSize: '14px', color: '#15803d', marginBottom: '10px' }}><strong>Bước 1:</strong> Hãy ngồi thẳng lưng ở tư thế làm việc chuẩn (gần màn hình nhất) và bấm Ghi nhận.</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                        <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#047857' }}>{sensorData.distance} cm</span>
-                        <button onClick={recordMin} style={{ backgroundColor: '#059669', color: 'white', padding: '6px 12px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}>Ghi nhận Min</button>
-                      </div>
-                    </div>
-                )}
-
-                {calibStep === 2 && (
-                    <div>
-                      <p style={{ fontSize: '14px', color: '#15803d', marginBottom: '10px' }}><strong>Bước 2:</strong> Hãy ngả lưng ra sau ở tư thế thư giãn (xa màn hình nhất) và bấm Ghi nhận.</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                        <span style={{ fontSize: '20px', fontWeight: 'bold', color: '#047857' }}>{sensorData.distance} cm</span>
-                        <button onClick={recordMax} style={{ backgroundColor: '#059669', color: 'white', padding: '6px 12px', borderRadius: '4px', border: 'none', cursor: 'pointer' }}>Ghi nhận Max</button>
-                      </div>
-                    </div>
-                )}
-
-                {calibStep === 3 && (
-                    <div>
-                      <p style={{ fontSize: '14px', color: '#15803d', marginBottom: '10px' }}><strong>Hoàn tất!</strong> Dải khoảng cách an toàn của bạn là:</p>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-                        <span style={{ fontSize: '18px', fontWeight: 'bold', color: '#047857' }}>Min: {Math.min(tempMin, tempMax)} cm ➔ Max: {Math.max(tempMin, tempMax)} cm</span>
-                        <button onClick={applyCalibration} style={{ backgroundColor: '#059669', color: 'white', padding: '6px 12px', borderRadius: '4px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>✨ Áp dụng</button>
-                      </div>
-                    </div>
-                )}
-              </div>
-          )}
-
-          <div className="input-row">
-            <div className="input-group">
-              <label>Khoảng cách gần nhất (cm)</label>
-              <input
-                  type="number"
-                  name="distanceThresholdMin"
-                  value={config.distanceThresholdMin}
-                  onChange={handleChange}
-              />
-            </div>
-            <div className="input-group">
-              <label>Khoảng cách xa nhất (cm)</label>
-              <input
-                  type="number"
-                  name="distanceThresholdMax"
-                  value={config.distanceThresholdMax}
-                  onChange={handleChange}
-              />
-            </div>
-          </div>
-
-          <div className="divider"></div>
-
-          <div className="checkbox-group">
-            <input
-                type="checkbox"
-                id="autoDimEnabled"
-                name="autoDimEnabled"
-                checked={config.autoDimEnabled}
-                onChange={handleChange}
-            />
-            <label htmlFor="autoDimEnabled">Auto-dim (Tự động điều chỉnh độ sáng)</label>
-          </div>
-
-          {!config.autoDimEnabled && (
-              <div className="sub-setting">
-                <div className="sub-setting-header">
-                  Độ sáng thủ công: <span>{config.manualLightLevel}%</span>
+            ) : (
+                <div className="flex justify-center gap-8 text-center bg-blue-50 p-6 rounded-xl border border-blue-100">
+                  <div className="flex flex-col items-center">
+                    <span className="text-sm text-blue-600 font-medium mb-1">Khoảng cách</span>
+                    <span className="text-3xl font-black text-blue-800">{sensorData.distance} cm</span>
+                  </div>
+                  <div className="w-px bg-blue-200"></div>
+                  <div className="flex flex-col items-center">
+                    <span className="text-sm text-blue-600 font-medium mb-1">Ánh sáng</span>
+                    <span className="text-3xl font-black text-blue-800">{sensorData.light}%</span>
+                  </div>
+                  <div className="w-px bg-blue-200"></div>
+                  <div className="flex flex-col items-center">
+                    <span className="text-sm text-blue-600 font-medium mb-1">Chuyển động</span>
+                    {sensorData.motion ? (
+                        <span className="flex items-center gap-1 text-xl font-bold text-emerald-600 mt-1"><CheckCircle2 size={24}/> Có</span>
+                    ) : (
+                        <span className="flex items-center gap-1 text-xl font-bold text-red-500 mt-1"><XCircle size={24}/> Không</span>
+                    )}
+                  </div>
                 </div>
-                <input
-                    type="range"
-                    name="manualLightLevel"
-                    min="0" max="100"
-                    value={config.manualLightLevel}
-                    onChange={(e) => {
-                      handleChange(e); // lưu state
-                      previewLightLevel(e.target.value); // Bắn lệnh Real-time
-                    }}
-                />
-              </div>
-          )}
-
-          <div className="divider"></div>
-
-          <div className="checkbox-group">
-            <input
-                type="checkbox"
-                id="autoSleepEnabled"
-                name="autoSleepEnabled"
-                checked={config.autoSleepEnabled}
-                onChange={handleChange}
-            />
-            <label htmlFor="autoSleepEnabled">Auto-sleep (Tự động tắt khi vắng mặt)</label>
+            )}
           </div>
-
-          {config.autoSleepEnabled && (
-              <div className="sub-setting" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                <div className="sub-setting-header" style={{ marginBottom: '8px' }}>
-                  Thời gian chờ trước khi Sleep (phút)
-                </div>
-                <input
-                    type="number"
-                    name="sleepTimeoutMins"
-                    value={config.sleepTimeoutMins}
-                    onChange={handleChange}
-                    style={{ width: '120px', padding: '8px', border: '1px solid #ddd', borderRadius: '4px', textAlign: 'center' }}
-                />
-              </div>
-          )}
-
-          <button className="btn-save" onClick={handleSave} style={{ marginTop: '20px' }}>
-            Lưu Cài Đặt
-          </button>
-
-          {/* ========================================== */}
-          {/* NÚT TOGGLE HIỂN THỊ REAL-TIME              */}
-          {/* ========================================== */}
-          <div className="divider" style={{ marginTop: '30px', marginBottom: '20px' }}></div>
-          <button
-              onClick={() => setShowRealTime(!showRealTime)}
-              style={{ width: '100%', padding: '12px', backgroundColor: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '6px', fontWeight: 'bold', color: '#4b5563', cursor: 'pointer', marginBottom: '15px', transition: 'all 0.2s' }}
-          >
-            {showRealTime ? "Đóng hộp thoại Real-time" : "📊 Đọc số đo Real-time từ thiết bị"}
-          </button>
-
-          {/* KHUNG HIỂN THỊ REAL-TIME */}
-          {showRealTime && (
-              <div style={{ backgroundColor: '#e0f2fe', border: '1px solid #bae6fd', padding: '20px', borderRadius: '8px' }}>
-                {!isConnected ? (
-                    <div style={{ textAlign: 'center' }}>
-                      <p style={{ color: '#0369a1', marginBottom: '15px', fontSize: '15px' }}>Thiết bị chưa được kết nối.</p>
-                      <button
-                          onClick={connectDevice}
-                          style={{ backgroundColor: '#0284c7', color: 'white', padding: '10px 20px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}
-                      >
-                         Kết nối Yolo:Bit
-                      </button>
-                    </div>
-                ) : (
-                    <div style={{ display: 'flex', justifyContent: 'space-around', textAlign: 'center' }}>
-                      <div>
-                        <span style={{ fontSize: '13px', color: '#0369a1', display: 'block', marginBottom: '5px' }}>Khoảng cách</span>
-                        <strong style={{ fontSize: '24px', color: '#0284c7' }}>{sensorData.distance} cm</strong>
-                      </div>
-                      <div>
-                        <span style={{ fontSize: '13px', color: '#0369a1', display: 'block', marginBottom: '5px' }}>Ánh sáng phòng</span>
-                        <strong style={{ fontSize: '24px', color: '#0284c7' }}>{sensorData.light}%</strong>
-                      </div>
-                      <div>
-                        <span style={{ fontSize: '13px', color: '#0369a1', display: 'block', marginBottom: '5px' }}>Trạng thái</span>
-                        <strong style={{ fontSize: '18px', color: sensorData.motion ? '#16a34a' : '#dc2626' }}>
-                          {sensorData.motion ? "Có người" : "Vắng mặt"}
-                        </strong>
-                      </div>
-                    </div>
-                )}
-              </div>
-          )}
 
         </div>
       </div>
