@@ -18,6 +18,8 @@ public interface DeviceRepository extends JpaRepository<Device, String> {
 
     List<Device> findByRoom_Id(UUID roomId);
 
+
+
     @Modifying
     @Transactional
     @Query(value = "UPDATE devices " +

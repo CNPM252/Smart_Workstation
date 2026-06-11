@@ -24,7 +24,6 @@ const MainLayout = () => {
                     className="sidebar-header"
                     style={{ display: "flex", flexDirection: "column", gap: "5px", padding: "30px" }}
                 >
-                    {/* Hàng 1: Logo và Tên ứng dụng */}
                     <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                         <img
                             src={logo}
@@ -34,7 +33,6 @@ const MainLayout = () => {
                         <h2 style={{ margin: 0, fontWeight: "bold" }}>BKWorkspace</h2>
                     </div>
 
-                    {/* Hàng 2: Badge (Vẫn giữ lề 40px để canh ngay dưới chữ BK) */}
                     <span
                         className="badge"
                         style={{ alignSelf: "flex-start", marginLeft: "40px" }}
@@ -60,14 +58,12 @@ const MainLayout = () => {
                         <span>Không gian</span>
                     </NavLink>
 
-                    {/* ĐÃ THÊM MENU QUẢN LÝ NHÓM & LỚP */}
                     <NavLink to="/groups" className={({ isActive }) => isActive ? 'nav-item active' : 'nav-item'}>
                         <Users size={20} />
                         <span>Nhóm & Lớp</span>
                     </NavLink>
                 </nav>
 
-                {/* 🚀 KHU VỰC NÚT KẾT NỐI THIẾT BỊ NẰM TRÊN USER INFO */}
                 <div style={{ padding: '0 20px', marginBottom: '16px', marginTop: 'auto' }}>
                     <button
                         onClick={connectDevice}
@@ -117,7 +113,7 @@ const MainLayout = () => {
                 </div>
             </aside>
 
-            {/* Nội dung chính thay đổi ở đây */}
+
             <main className="main-content">
                 <Outlet />
             </main>

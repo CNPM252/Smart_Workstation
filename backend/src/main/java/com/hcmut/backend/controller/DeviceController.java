@@ -4,6 +4,7 @@ import com.hcmut.backend.dto.TelemetryRequest;
 import com.hcmut.backend.dto.DeviceJoinRequest;
 import com.hcmut.backend.model.Device;
 import com.hcmut.backend.model.User;
+import com.hcmut.backend.repository.DeviceRepository;
 import com.hcmut.backend.repository.UserRepository;
 import com.hcmut.backend.service.DeviceService;
 import com.hcmut.backend.model.UserConfig;
@@ -16,7 +17,11 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.JsonNode;
+
+import java.util.List;
 import java.util.concurrent.TimeUnit;
+
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -32,14 +37,25 @@ public class DeviceController {
     private final ObjectMapper objectMapper;
 
     private final DeviceService deviceService;
+    private final DeviceRepository deviceRepository;
 
     private final UserRepository userRepository;
     private final UserConfigRepository userConfigRepository;
+
+    private final SimpMessagingTemplate messagingTemplate;
 
     @PostMapping("/{macAddress}/check-in")
     public ResponseEntity<?> checkIn(@PathVariable String macAddress, @RequestParam String userId) {
         try {
             deviceService.checkIn(macAddress, userId);
+
+            Device device = deviceRepository.findById(macAddress)
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị"));
+
+            if (device.getRoom() != null) {
+                broadcastRoomUpdate(device.getRoom().getId());
+            }
+
             return ResponseEntity.ok("Check-in thành công!");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -49,7 +65,17 @@ public class DeviceController {
     @PostMapping("/{macAddress}/check-out")
     public ResponseEntity<?> checkOut(@PathVariable String macAddress) {
         try {
+            Device device = deviceRepository.findById(macAddress)
+                    .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị"));
+
+            UUID roomId = device.getRoom() != null ? device.getRoom().getId() : null;
+
             deviceService.checkOut(macAddress);
+
+            if (roomId != null) {
+                broadcastRoomUpdate(roomId);
+            }
+
             return ResponseEntity.ok("Check-out thành công!");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -95,6 +121,17 @@ public class DeviceController {
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
+    }
+
+    /// /////////////////////////////////
+    /// socket/  broadcast cho room
+    /// ////////////////////////////////
+
+    private void broadcastRoomUpdate(UUID roomId) {
+        if (roomId == null) return;
+        List<Device> updatedDevices = deviceRepository.findByRoom_Id(roomId);
+        // Bắn danh sách thiết bị mới nhất thẳng xuống kênh của phòng đó
+        messagingTemplate.convertAndSend("/topic/room/" + roomId, updatedDevices);
     }
 
     /// /////////////////////////////////

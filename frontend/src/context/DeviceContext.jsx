@@ -17,7 +17,6 @@ export const DeviceProvider = ({ children }) => {
     const selectedDeviceMacRef = useRef('');
     const latestSensorDataRef = useRef(null);
 
-    // 🚀 REF: THEO DÕI THỜI GIAN TƯƠNG TÁC CUỐI CÙNG CỦA NGƯỜI DÙNG
     const lastInteractionRef = useRef(Date.now());
 
     const currentUserId = user?.id || user?.username;

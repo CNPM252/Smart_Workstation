@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
 import { useAuth } from '../context/AuthContext';
-import { ArrowLeft, Monitor, Usb, Map } from 'lucide-react'; // ĐÃ FIX: Thêm import Map ở đây
+import { useDevice } from '../context/DeviceContext';
+import { ArrowLeft, Monitor, Usb, Map } from 'lucide-react';
+import { Client } from '@stomp/stompjs';
+import SockJS from 'sockjs-client';
 
 const RoomDetail = () => {
     const { roomId } = useParams();
@@ -17,33 +20,65 @@ const RoomDetail = () => {
     const GRID_ROWS = 6;
     const GRID_COLS = 8;
 
+    const userOwner = user?.id || user?.username;
+
+    // 🚀 TẢI DỮ LIỆU BAN ĐẦU VÀ KẾT NỐI WEBSOCKET
     useEffect(() => {
-        fetchRoomData();
-    }, [roomId, user]);
+        if (!userOwner || !roomId) return;
 
-    const fetchRoomData = async () => {
-        const userOwner = user?.id || user?.username;
-        if (!userOwner) return;
+        const fetchInitialData = async () => {
+            try {
+                // 1. Lấy thông tin phòng
+                const roomsRes = await axiosClient.get('/api/rooms', { params: { owner: userOwner } });
+                const currentRoom = roomsRes.data.find(r => r.id === roomId);
+                if (currentRoom) setRoom(currentRoom);
 
-        try {
-            // Lấy thông tin phòng hiện tại
-            const roomsRes = await axiosClient.get('/api/rooms', { params: { owner: userOwner } });
-            const currentRoom = roomsRes.data.find(r => r.id === roomId);
-            if (currentRoom) setRoom(currentRoom);
-
-            // Lấy danh sách thiết bị trong phòng
-            const devicesRes = await axiosClient.get(`/api/devices/room/${roomId}`);
-            if (Array.isArray(devicesRes.data)) {
-                setDevices(devicesRes.data);
+                // 2. Lấy danh sách thiết bị ban đầu để vẽ giao diện nhanh
+                const devicesRes = await axiosClient.get(`/api/devices/room/${roomId}`);
+                if (Array.isArray(devicesRes.data)) {
+                    setDevices(devicesRes.data);
+                }
+            } catch (error) {
+                console.error("Lỗi khi tải dữ liệu phòng:", error);
+            } finally {
+                setLoading(false);
             }
-        } catch (error) {
-            console.error("Lỗi khi tải dữ liệu phòng:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
+        };
 
-    // Phân loại thiết bị (Hỗ trợ cả trường hợp Backend trả về xposition hoặc xPosition)
+        fetchInitialData();
+
+        // 3. MỞ ĐƯỜNG ỐNG WEBSOCKET REAL-TIME
+        const socket = new SockJS('http://localhost:8080/ws');
+        const stompClient = new Client({
+            webSocketFactory: () => socket,
+            reconnectDelay: 5000, // Tự động kết nối lại nếu rớt mạng
+            onConnect: () => {
+                console.log('✅ Đã kết nối WebSocket thành công vào phòng:', roomId);
+
+                // Đăng ký nghe lén kênh của phòng này
+                stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
+                    if (message.body) {
+                        const latestDevices = JSON.parse(message.body);
+                        setDevices(latestDevices); // Re-render UI ngay lập tức
+                    }
+                });
+            },
+            onStompError: (frame) => {
+                console.error('Lỗi WebSocket: ' + frame.headers['message']);
+            }
+        });
+
+        stompClient.activate();
+
+        // 4. Cleanup: Ngắt kết nối khi rời khỏi trang sa bàn
+        return () => {
+            if (stompClient.active) {
+                stompClient.deactivate();
+            }
+        };
+    }, [roomId, userOwner]);
+
+    // Phân loại thiết bị
     const placedDevices = devices.filter(d => (d.xposition != null || d.xPosition != null) && (d.yposition != null || d.yPosition != null));
     const unplacedDevices = devices.filter(d => (d.xposition == null && d.xPosition == null) || (d.yposition == null && d.yPosition == null));
 
@@ -72,7 +107,9 @@ const RoomDetail = () => {
         } catch (error) {
             console.error("Lỗi lưu tọa độ:", error);
             alert("Lỗi khi lưu vị trí thiết bị!");
-            fetchRoomData(); // Rollback nếu lỗi
+            // Nếu lỗi, fetch lại devices từ server để đồng bộ
+            const devicesRes = await axiosClient.get(`/api/devices/room/${roomId}`);
+            setDevices(devicesRes.data);
         }
     };
 
@@ -117,8 +154,14 @@ const RoomDetail = () => {
 
                 {/* TRÁI: SA BÀN LƯỚI */}
                 <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col">
-                    <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center">
-                        <Map className="mr-2" size={20} /> Sơ đồ thiết bị
+                    <h3 className="text-lg font-bold text-gray-700 mb-4 flex items-center justify-between">
+                        <div className="flex items-center">
+                            <Map className="mr-2" size={20} /> Sơ đồ thiết bị
+                        </div>
+                        {/* 🚀 UI Báo hiệu Live Monitoring */}
+                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full animate-pulse flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Live Monitoring
+                        </span>
                     </h3>
 
                     <div
@@ -152,7 +195,7 @@ const RoomDetail = () => {
                                             <div
                                                 draggable
                                                 onDragStart={(e) => handleDragStart(e, deviceHere.macAddress)}
-                                                className={`cursor-move flex flex-col items-center p-2 w-full h-full justify-center ${(deviceHere.active || deviceHere.isActive) ? 'text-green-600' : 'text-red-500 hover:text-red-600'}`}
+                                                className={`cursor-move flex flex-col items-center p-2 w-full h-full justify-center ${(deviceHere.active || deviceHere.isActive) ? 'text-emerald-600' : 'text-red-500 hover:text-red-600'}`}
                                                 title={deviceHere.currentUser ? `User: ${deviceHere.currentUser}` : 'Đang trống'}
                                             >
                                                 <Monitor size={32} />
@@ -161,12 +204,12 @@ const RoomDetail = () => {
                                                 </span>
 
                                                 {/* HIỂN THỊ MSSV HOẶC CHỮ "TRỐNG" */}
-                                                <span className={`text-[11px] font-bold mt-1 px-2 rounded-full ${(deviceHere.active || deviceHere.isActive) ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500'}`}>
+                                                <span className={`text-[11px] font-bold mt-1 px-2 rounded-full ${(deviceHere.active || deviceHere.isActive) ? 'bg-emerald-100 text-emerald-700' : 'bg-red-50 text-red-500'}`}>
                                                     {(deviceHere.active || deviceHere.isActive) ? `👤 ${deviceHere.currentUser}` : 'Trống'}
                                                 </span>
 
                                                 {/* ĐÈN LED TÍN HIỆU GÓC TRÊN */}
-                                                <span className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full shadow-sm ${(deviceHere.active || deviceHere.isActive) ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></span>
+                                                <span className={`absolute top-2 right-2 w-2.5 h-2.5 rounded-full shadow-sm ${(deviceHere.active || deviceHere.isActive) ? 'bg-emerald-500 animate-pulse' : 'bg-red-500'}`}></span>
                                             </div>
                                         )}
                                     </div>

@@ -2,18 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axiosClient from '../api/axiosClient';
 import { useAuth } from '../context/AuthContext';
-import { Plus, Map, Trash2, ShieldAlert, MonitorUp, X, RefreshCw } from 'lucide-react';
-
-// Danh sách MAC ảo để test trong lúc chờ thiết bị IOT thật
-const MOCK_MAC_ADDRESSES = [
-    'MAC-101', 'MAC-102', 'MAC-103', 'MAC-104', 'MAC-105',
-    'AC:12:34:56:78:90', 'B8:27:EB:00:11:22', '00:14:22:01:23:45',
-    'F0:E1:D2:C3:B4:A5', 'AA:BB:CC:DD:EE:FF'
-];
+import { useDevice } from '../context/DeviceContext'; // 🚀 IMPORT DEVICE CONTEXT
+import { Plus, Map, Trash2, ShieldAlert, MonitorUp, X } from 'lucide-react';
 
 const Rooms = () => {
     const { user, isGuest } = useAuth();
     const navigate = useNavigate();
+
+    // 🚀 LẤY TRẠNG THÁI TỪ CÁP USB
+    const { isConnected, sensorData } = useDevice();
 
     // States cho danh sách phòng
     const [rooms, setRooms] = useState([]);
@@ -23,11 +20,20 @@ const Rooms = () => {
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [newRoomData, setNewRoomData] = useState({ name: '', roomCode: '' });
 
-    // States cho Modal Thêm Máy (Auto-Join)
+    // States cho Modal Thêm Máy
     const [showDeviceModal, setShowDeviceModal] = useState(false);
     const [devicePayload, setDevicePayload] = useState({ macAddress: '', roomCode: '' });
 
     const currentUsername = user?.id || user?.username;
+
+    // 🚀 AUTO-DETECT MAC ADDRESS KHI CẮM CÁP
+    useEffect(() => {
+        if (isConnected && sensorData?.macAddress) {
+            setDevicePayload(prev => ({ ...prev, macAddress: sensorData.macAddress }));
+        } else if (!isConnected) {
+            setDevicePayload(prev => ({ ...prev, macAddress: '' }));
+        }
+    }, [isConnected, sensorData?.macAddress]);
 
     // Tải danh sách phòng
     useEffect(() => {
@@ -76,30 +82,28 @@ const Rooms = () => {
         }
     };
 
-    // MỞ MODAL VÀ TẠO MAC NGẪU NHIÊN
     const handleOpenDeviceModal = () => {
-        const randomMac = MOCK_MAC_ADDRESSES[Math.floor(Math.random() * MOCK_MAC_ADDRESSES.length)];
-        setDevicePayload({ macAddress: randomMac, roomCode: '' });
+        // Reset form nhưng giữ lại MAC nếu đang cắm cáp
+        setDevicePayload({
+            macAddress: isConnected ? sensorData.macAddress : '',
+            roomCode: ''
+        });
         setShowDeviceModal(true);
-    };
-
-    // Đổi MAC ngẫu nhiên khác (nếu người dùng muốn test máy khác)
-    const handleRefreshMac = () => {
-        const randomMac = MOCK_MAC_ADDRESSES[Math.floor(Math.random() * MOCK_MAC_ADDRESSES.length)];
-        setDevicePayload({ ...devicePayload, macAddress: randomMac });
     };
 
     const handleAddDevice = async (e) => {
         e.preventDefault();
         if (!devicePayload.macAddress || !devicePayload.roomCode.trim()) {
-            alert("Vui lòng nhập đầy đủ Mã phòng!");
+            alert("Vui lòng cắm mạch và nhập đầy đủ Mã phòng!");
             return;
         }
 
         try {
+            // Sử dụng nguyên vẹn API auto-join của sếp
             const response = await axiosClient.post('/api/devices/auto-join', devicePayload);
-            alert(response.data);
+            alert("Liên kết thiết bị thành công!");
             setShowDeviceModal(false);
+            fetchRooms(); // Load lại để cập nhật data nếu cần
         } catch (error) {
             alert(error.response?.data || "Lỗi khi thêm máy! Vui lòng kiểm tra lại Mã phòng.");
         }
@@ -176,7 +180,7 @@ const Rooms = () => {
                 </div>
             )}
 
-            {/* MODAL THÊM MÁY (AUTO-JOIN) */}
+            {/* 🚀 MODAL THÊM MÁY (PLUG & PLAY) */}
             {showDeviceModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden">
@@ -191,21 +195,33 @@ const Rooms = () => {
 
                         <form onSubmit={handleAddDevice} className="p-5">
                             <div className="mb-4">
-                                <label className="flex justify-between text-sm font-bold text-gray-700 mb-1">
-                                    <span>Địa chỉ MAC (Tự động nhận diện)</span>
-                                    <button type="button" onClick={handleRefreshMac} className="text-blue-500 hover:text-blue-700 flex items-center text-xs">
-                                        <RefreshCw size={12} className="mr-1" /> Đổi MAC Test
-                                    </button>
+                                <label className="flex items-center justify-between text-sm font-bold text-gray-700 mb-2">
+                                    <span>Địa chỉ MAC (Đọc qua USB)</span>
+                                    {isConnected && devicePayload.macAddress ? (
+                                        <span className="text-[10px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300 font-bold">
+                                            🟢 Đã nhận diện
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] text-orange-700 bg-orange-100 px-2 py-0.5 rounded border border-orange-300 font-bold">
+                                            🔌 Đang chờ thiết bị...
+                                        </span>
+                                    )}
                                 </label>
-                                {/* INPUT MAC ADDRESS ĐÃ ĐƯỢC KHÓA CHẾT VÀ TÔ XÁM */}
+
                                 <input
                                     type="text"
                                     readOnly
+                                    placeholder={isConnected ? "Đang quét mã MAC..." : "Cắm cáp & bấm Kết nối thiết bị ở Menu"}
                                     value={devicePayload.macAddress}
-                                    className="w-full border border-gray-300 rounded-lg p-2.5 bg-gray-100 text-gray-500 cursor-not-allowed font-mono outline-none"
+                                    className={`w-full border rounded-lg p-2.5 font-mono outline-none cursor-default transition-colors ${
+                                        devicePayload.macAddress ? 'bg-blue-50 border-blue-400 text-blue-700 font-bold shadow-sm' : 'bg-gray-100 border-gray-300 text-gray-500'
+                                    }`}
                                 />
-                                <p className="text-xs text-gray-400 mt-1 italic">*Test: Mã MAC được tạo ngẫu nhiên.</p>
+                                <p className="text-xs text-gray-500 mt-2 leading-tight">
+                                    Hệ thống sẽ tự động quét mã MAC khi bạn cắm mạch phần cứng và bấm <b>Kết nối thiết bị</b> ở Sidebar.
+                                </p>
                             </div>
+
                             <div className="mb-6">
                                 <label className="block text-sm font-bold text-gray-700 mb-1">Mã Phòng (Room Code)</label>
                                 <input
@@ -218,11 +234,18 @@ const Rooms = () => {
                                     className="w-full border border-gray-300 rounded-lg p-2.5 outline-none focus:ring-2 focus:ring-green-200 font-bold"
                                 />
                             </div>
+
                             <div className="flex justify-end gap-2">
                                 <button type="button" onClick={() => setShowDeviceModal(false)} className="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg">
                                     Hủy
                                 </button>
-                                <button type="submit" className="px-4 py-2 bg-green-600 text-white font-bold hover:bg-green-700 rounded-lg">
+                                <button
+                                    type="submit"
+                                    disabled={!devicePayload.macAddress}
+                                    className={`px-4 py-2 text-white font-bold rounded-lg transition-colors ${
+                                        devicePayload.macAddress ? 'bg-green-600 hover:bg-green-700 shadow-md' : 'bg-gray-300 cursor-not-allowed'
+                                    }`}
+                                >
                                     Liên kết máy
                                 </button>
                             </div>
@@ -231,7 +254,7 @@ const Rooms = () => {
                 </div>
             )}
 
-            {/* MODAL TẠO PHÒNG CŨ */}
+            {/* MODAL TẠO PHÒNG */}
             {showCreateModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
                     <div className="bg-white rounded-xl shadow-lg w-full max-w-md overflow-hidden">
@@ -271,7 +294,7 @@ const Rooms = () => {
                                 <button type="button" onClick={() => setShowCreateModal(false)} className="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg">
                                     Hủy
                                 </button>
-                                <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold hover:bg-blue-700 rounded-lg">
+                                <button type="submit" className="px-4 py-2 bg-blue-600 text-white font-bold hover:bg-blue-700 rounded-lg shadow-md">
                                     Tạo mới
                                 </button>
                             </div>
