@@ -84,8 +84,6 @@ public class UserConfigService {
 
         stringRedisTemplate.delete("user_config_cache:" + username);
 
-        System.out.println("=== DEBUG MQTT ===");
-        System.out.println("Đang tìm máy cho user: [" + username + "]");
         deviceRepository.findByCurrentUser(username).ifPresentOrElse(device -> {
             System.out.println(">> Đã tìm thấy user ngồi tại máy: " + device.getMacAddress());
 

@@ -51,7 +51,7 @@ public class GroupController {
         }
     }
 
-    @GetMapping("/{groupId}/attendance")
+    @GetMapping("/groups/{groupId}/attendance")
     public ResponseEntity<?> takeAttendance(@PathVariable UUID groupId, @RequestParam UUID roomId) {
         //  Lấy danh sách thành viên hợp lệ của Group
         List<GroupMember> members = groupMemberRepository.findByIdGroupId(groupId);
