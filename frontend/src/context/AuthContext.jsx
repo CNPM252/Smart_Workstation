@@ -23,21 +23,6 @@ export const AuthProvider = ({ children }) => {
         setLoading(false);
     }, []);
 
-    // Hàm hỗ trợ tìm và lưu MAC Address của trạm (Workstation)
-    const resolveMacAddress = () => {
-        const params = new URLSearchParams(window.location.search);
-        let mac = params.get('mac');
-
-        if (!mac) {
-            // Nếu không quét QR, lấy lại mac cũ hoặc dùng tạm máy WS-001 để test
-            mac = localStorage.getItem('macAddress') || 'WS-001';
-        }
-
-        // Lưu lại để lát nữa Logout còn biết máy nào mà Check-out
-        localStorage.setItem('macAddress', mac);
-        return mac;
-    };
-
     const login = async (username, password) => {
         try {
             // 1. Gọi API Login
@@ -59,19 +44,7 @@ export const AuthProvider = ({ children }) => {
                 role: decodedData.role
             };
 
-            // 3. Gọi API CHECK-IN THIẾT BỊ
-            const macAddress = resolveMacAddress();
-            try {
-                // Post body là null, nhét userId vào Query Param (?userId=...)
-                await axiosClient.post(`/api/devices/${macAddress}/check-in`, null, {
-                    params: { userId: userData.id }
-                });
-                console.log(`[IoT] Đã Check-in thiết bị ${macAddress} cho user ${userData.id}`);
-            } catch (err) {
-                console.error("[IoT] Lỗi khi check-in thiết bị:", err);
-            }
-
-            // 4. Lưu dữ liệu và cập nhật State
+            // 3. Lưu dữ liệu và cập nhật State (Logic Check-in đã dời sang DeviceContext)
             localStorage.setItem('token', token);
             localStorage.setItem('user', JSON.stringify(userData));
 
@@ -89,41 +62,16 @@ export const AuthProvider = ({ children }) => {
         sessionStorage.setItem('isGuest', 'true');
         const guestId = 'guest_' + Math.random().toString(36).substring(7);
         sessionStorage.setItem('guestId', guestId);
-
-        // --- GỌI API CHECK-IN CHO GUEST ---
-        const macAddress = resolveMacAddress();
-        try {
-            await axiosClient.post(`/api/devices/${macAddress}/check-in`, null, {
-                params: { userId: guestId }
-            });
-            console.log(`[IoT] Đã Check-in thiết bị ${macAddress} cho GUEST ${guestId}`);
-        } catch (err) {
-            console.error("[IoT] Lỗi khi check-in thiết bị cho Guest:", err);
-        }
-
         setIsGuest(true);
         setUser(null);
     };
 
     const logout = async () => {
-        // --- GỌI API CHECK-OUT TRƯỚC KHI XÓA DATA TRÌNH DUYỆT ---
-        const macAddress = localStorage.getItem('macAddress');
-        if (macAddress) {
-            try {
-                await axiosClient.post(`/api/devices/${macAddress}/check-out`);
-                console.log(`[IoT] Đã Check-out giải phóng thiết bị ${macAddress}`);
-            } catch (err) {
-                console.error("[IoT] Lỗi khi check-out thiết bị:", err);
-            }
-        }
-
-        // Dọn dẹp bộ nhớ
+        // Dọn dẹp bộ nhớ (Logic Check-out đã dời sang DeviceContext)
         localStorage.removeItem('token');
         localStorage.removeItem('user');
         sessionStorage.removeItem('isGuest');
         sessionStorage.removeItem('guestId');
-
-        // Không xóa macAddress trong localStorage vì máy tính vật lý ở phòng lab vẫn cố định ở đó
 
         setUser(null);
         setIsGuest(false);

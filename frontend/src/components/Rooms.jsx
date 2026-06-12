@@ -9,7 +9,7 @@ const Rooms = () => {
     const { user, isGuest } = useAuth();
     const navigate = useNavigate();
 
-    // 🚀 LẤY TRẠNG THÁI TỪ CÁP USB
+    // LẤY TRẠNG THÁI TỪ CÁP USB
     const { isConnected, sensorData } = useDevice();
 
     // States cho danh sách phòng
@@ -26,7 +26,7 @@ const Rooms = () => {
 
     const currentUsername = user?.id || user?.username;
 
-    // 🚀 AUTO-DETECT MAC ADDRESS KHI CẮM CÁP
+    // AUTO-DETECT MAC ADDRESS KHI CẮM CÁP
     useEffect(() => {
         if (isConnected && sensorData?.macAddress) {
             setDevicePayload(prev => ({ ...prev, macAddress: sensorData.macAddress }));

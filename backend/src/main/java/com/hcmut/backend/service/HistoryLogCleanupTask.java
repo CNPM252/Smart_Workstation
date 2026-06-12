@@ -17,7 +17,7 @@ public class HistoryLogCleanupTask {
     // Clear history luc 2h sang
     @Scheduled(cron = "0 0 2 * * ?")
     public void cleanupOldLogs(){
-        LocalDateTime cutoffDate = LocalDateTime.now().minusDays(14);
+        LocalDateTime cutoffDate = LocalDateTime.now().minusDays(30);
 
         System.out.println("Xóa logs trước ngày:" + cutoffDate);
 

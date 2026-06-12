@@ -123,7 +123,7 @@ public class DashboardController {
             Map<String, Object> item = new java.util.HashMap<>();
             item.put("day", vietnameseDays[i]);
 
-            // 🚀 VÁ DỮ LIỆU REAL-TIME CHO HÔM NAY
+            // VÁ DỮ LIỆU REAL-TIME CHO HÔM NAY
             if (currentDate.isEqual(today)) {
                 long minutesToday = historyLogRepository.countByCurrentUserIdAndRecordedAtBetween(
                         dbUserId, today.atStartOfDay(), today.atTime(23, 59, 59));
@@ -170,7 +170,7 @@ public class DashboardController {
             Map<String, Object> item = new java.util.HashMap<>();
             item.put("day", currentDate.format(formatter));
 
-            // 🚀 VÁ DỮ LIỆU REAL-TIME CHO HÔM NAY
+            // VÁ DỮ LIỆU REAL-TIME CHO HÔM NAY
             if (currentDate.isEqual(today)) {
                 long minutesToday = historyLogRepository.countByCurrentUserIdAndRecordedAtBetween(
                         dbUserId, today.atStartOfDay(), today.atTime(23, 59, 59));
@@ -221,7 +221,7 @@ public class DashboardController {
             return map;
         }).collect(Collectors.toList());
 
-        // 🚀 VÁ DỮ LIỆU REAL-TIME CHO HEATMAP (Chỉ vá nếu năm truy vấn là năm hiện tại)
+        // VÁ DỮ LIỆU REAL-TIME CHO HEATMAP (Chỉ vá nếu năm truy vấn là năm hiện tại)
         if (targetYear == today.getYear()) {
             long minutesToday = historyLogRepository.countByCurrentUserIdAndRecordedAtBetween(
                     dbUserId, today.atStartOfDay(), today.atTime(23, 59, 59));

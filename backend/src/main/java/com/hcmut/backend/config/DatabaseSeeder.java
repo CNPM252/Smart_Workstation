@@ -19,26 +19,9 @@ public class DatabaseSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        if (deviceRepository.count() == 0) {
-            System.out.println("Tạo Mac device giả");
-
-            Device dev1 = new Device();
-            dev1.setMacAddress("WS-001");
-            dev1.setActive(true);
-
-            Device dev2 = new Device();
-            dev2.setMacAddress("WS-002");
-            dev2.setActive(false);
-
-            deviceRepository.save(dev1);
-            deviceRepository.save(dev2);
-
-            System.out.println("tạo WS-001 và WS-002!");
-
-
             if (userRepository.findByUsername("admin").isEmpty()) {
 
-                System.out.println("Tạo tài khoản Admin mặc định...");
+                System.out.println("Tạo tài khoản Admin");
 
                 User admin = new User();
                 admin.setUsername("admin");
@@ -50,6 +33,5 @@ public class DatabaseSeeder implements CommandLineRunner {
 
                 System.out.println("Đã tạo tài khoản Admin! (User: admin | Pass: admin123)");
             }
-        }
     }
 }

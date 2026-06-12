@@ -22,7 +22,7 @@ const RoomDetail = () => {
 
     const userOwner = user?.id || user?.username;
 
-    // 🚀 TẢI DỮ LIỆU BAN ĐẦU VÀ KẾT NỐI WEBSOCKET
+    // TẢI DỮ LIỆU BAN ĐẦU VÀ KẾT NỐI WEBSOCKET
     useEffect(() => {
         if (!userOwner || !roomId) return;
 
@@ -53,7 +53,7 @@ const RoomDetail = () => {
             webSocketFactory: () => socket,
             reconnectDelay: 5000, // Tự động kết nối lại nếu rớt mạng
             onConnect: () => {
-                console.log('✅ Đã kết nối WebSocket thành công vào phòng:', roomId);
+                console.log(' Đã kết nối WebSocket thành công vào phòng:', roomId);
 
                 // Đăng ký nghe lén kênh của phòng này
                 stompClient.subscribe(`/topic/room/${roomId}`, (message) => {
@@ -158,10 +158,6 @@ const RoomDetail = () => {
                         <div className="flex items-center">
                             <Map className="mr-2" size={20} /> Sơ đồ thiết bị
                         </div>
-                        {/* 🚀 UI Báo hiệu Live Monitoring */}
-                        <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full animate-pulse flex items-center gap-1">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Live Monitoring
-                        </span>
                     </h3>
 
                     <div

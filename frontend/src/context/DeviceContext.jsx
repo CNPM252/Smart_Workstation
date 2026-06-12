@@ -5,7 +5,9 @@ import { useAuth } from './AuthContext';
 const DeviceContext = createContext();
 
 export const DeviceProvider = ({ children }) => {
-    const { user } = useAuth();
+    // 🚀 LẤY THÔNG TIN USER TỪ AUTH
+    const { user, isGuest } = useAuth();
+
     const [isSleeping, setIsSleeping] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
     const [sensorData, setSensorData] = useState({
@@ -17,15 +19,17 @@ export const DeviceProvider = ({ children }) => {
     const selectedDeviceMacRef = useRef('');
     const latestSensorDataRef = useRef(null);
 
+    // 🚀 REF: LƯU MÃ MAC ĐANG ĐƯỢC CHECK-IN TRONG DB
+    const checkedInMacRef = useRef(null);
     const lastInteractionRef = useRef(Date.now());
 
-    const currentUserId = user?.id || user?.username;
+    // Tính toán UserId hiện tại (User thường hoặc Guest)
+    const currentUserId = user?.id || user?.username || (isGuest ? sessionStorage.getItem('guestId') : null);
 
-    //  LẮNG NGHE SỰ KIỆN CHUỘT / BÀN PHÍM ĐỂ ĐÁNH THỨC
+    // LẮNG NGHE SỰ KIỆN CHUỘT / BÀN PHÍM ĐỂ ĐÁNH THỨC
     useEffect(() => {
         const handleUserActivity = () => {
             lastInteractionRef.current = Date.now();
-            // Tắt ngay màn hình đen để phản hồi tức thì
             setIsSleeping(false);
         };
 
@@ -40,21 +44,65 @@ export const DeviceProvider = ({ children }) => {
         };
     }, []);
 
-    //  Xử lý Unload & Ngắt cáp vật lý
+    // 🚀 LUỒNG THÔNG MINH: TỰ ĐỘNG CHECK-IN / CHECK-OUT DỰA VÀO CÁP & ĐĂNG NHẬP
+    useEffect(() => {
+        const mac = sensorData.macAddress;
+
+        const doCheckIn = async (macToUse, userToUse) => {
+            if (checkedInMacRef.current === macToUse) return;
+            try {
+                await axiosClient.post(`/api/devices/${macToUse}/check-in`, null, { params: { userId: userToUse } });
+                console.log(`[IoT] Đã Check-in mạch ${macToUse} cho người dùng ${userToUse}`);
+                checkedInMacRef.current = macToUse; // Lưu vết
+            } catch (err) {
+                console.error("[IoT] Lỗi check-in:", err);
+            }
+        };
+
+        const doCheckOut = async (macToUse) => {
+            if (!checkedInMacRef.current) return;
+            try {
+                await axiosClient.post(`/api/devices/${macToUse}/check-out`);
+                console.log(`[IoT] Đã Check-out giải phóng mạch ${macToUse}`);
+                checkedInMacRef.current = null; // Xóa vết
+            } catch (err) {
+                console.error("[IoT] Lỗi check-out:", err);
+            }
+        };
+
+        // Kịch bản 1: Cắm cáp đọc được MAC + Có người dùng -> Check-in
+        if (mac && currentUserId) {
+            doCheckIn(mac, currentUserId);
+        }
+        // Kịch bản 2: Người dùng đăng xuất (mất currentUserId) nhưng mạch vẫn đang cắm -> Check-out
+        else if (!currentUserId && checkedInMacRef.current) {
+            doCheckOut(checkedInMacRef.current);
+        }
+    }, [sensorData.macAddress, currentUserId]);
+
+    // 🚀 XỬ LÝ UNLOAD & RÚT CÁP ĐỘT NGỘT
     useEffect(() => {
         const handleUnload = () => {
-            if (isConnected && selectedDeviceMacRef.current) {
-                navigator.sendBeacon(`http://localhost:8080/api/devices/${selectedDeviceMacRef.current}/check-out`);
+            // Tắt trình duyệt lúc đang cắm -> Bắn beacon Check-out
+            if (checkedInMacRef.current) {
+                navigator.sendBeacon(`http://localhost:8080/api/devices/${checkedInMacRef.current}/check-out`);
             }
         };
 
         const handleSerialDisconnect = async () => {
             console.log("🔌 Cáp USB đã bị rút đột ngột!");
+            const macToCheckout = checkedInMacRef.current || selectedDeviceMacRef.current;
+
             cleanupConnection();
-            if (selectedDeviceMacRef.current) {
+
+            // Nếu rút cáp thì Check-out ngay lập tức
+            if (macToCheckout) {
                 try {
-                    await axiosClient.post(`/api/devices/${selectedDeviceMacRef.current}/check-out`);
-                    alert("🔌 Thiết bị đã bị ngắt kết nối vật lý. Phiên làm việc đã được giải phóng!");
+                    await axiosClient.post(`/api/devices/${macToCheckout}/check-out`);
+                    alert("🔌 Thiết bị đã bị ngắt kết nối. Phiên làm việc đã được giải phóng trên hệ thống!");
+                    checkedInMacRef.current = null;
+                    selectedDeviceMacRef.current = '';
+                    setSensorData({ macAddress: '', distance: 0, light: 0, motion: false });
                 } catch (err) {
                     console.error("Lỗi giải phóng thiết bị:", err);
                 }
@@ -89,22 +137,15 @@ export const DeviceProvider = ({ children }) => {
                     });
 
                     const { action, autoDim, manualBrightness } = response.data;
-
-                    // 🚀 LOGIC ÂN HẠN (GRACE PERIOD) - ĐÃ NÂNG LÊN 30 GIÂY
                     const timeSinceInteraction = Date.now() - lastInteractionRef.current;
                     const isManuallyAwake = timeSinceInteraction < 30000;
-
                     const finalAction = (action === "SLEEP" && !isManuallyAwake) ? "SLEEP" : "AWAKE";
 
                     setIsSleeping(finalAction === "SLEEP");
 
                     if (portRef.current && portRef.current.writable) {
                         const writer = portRef.current.writable.getWriter();
-                        const serialPacket = JSON.stringify({
-                            cmd: finalAction,
-                            auto: autoDim,
-                            val: manualBrightness
-                        });
+                        const serialPacket = JSON.stringify({ cmd: finalAction, auto: autoDim, val: manualBrightness });
                         await writer.write(new TextEncoder().encode(serialPacket + '\n'));
                         writer.releaseLock();
                     }
@@ -124,7 +165,7 @@ export const DeviceProvider = ({ children }) => {
         readerRef.current = null;
     };
 
-    //  Kết nối & Đọc Serial
+    // Kết nối & Đọc Serial
     const connectDevice = async () => {
         try {
             const port = await navigator.serial.requestPort();
@@ -147,7 +188,6 @@ export const DeviceProvider = ({ children }) => {
         readerRef.current = reader;
 
         let buffer = '';
-
         try {
             while (true) {
                 const { value, done } = await reader.read();
@@ -175,9 +215,7 @@ export const DeviceProvider = ({ children }) => {
 
                             setSensorData(newSensorData);
                             latestSensorDataRef.current = newSensorData;
-                        } catch (e) {
-                            // Bỏ qua rác JSON
-                        }
+                        } catch (e) {}
                     }
                 }
             }
@@ -190,7 +228,6 @@ export const DeviceProvider = ({ children }) => {
 
     return (
         <DeviceContext.Provider value={{ isConnected, isSleeping, sensorData, connectDevice, portRef }}>
-            {/* 🚀 LỚP PHỦ OVERLAY ĐEN 95% */}
             {isSleeping && (
                 <div
                     className="fixed inset-0 z-9999 bg-black/95 flex flex-col items-center justify-center transition-opacity duration-500"
@@ -204,8 +241,6 @@ export const DeviceProvider = ({ children }) => {
                     </div>
                 </div>
             )}
-
-            {/* NỘI DUNG WEB BÊN DƯỚI */}
             {children}
         </DeviceContext.Provider>
     );
