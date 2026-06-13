@@ -9,6 +9,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import com.hcmut.backend.service.UserConfigService;
+import org.springframework.context.ApplicationEventPublisher;
+import com.hcmut.backend.event.SystemEvent;
 
 import java.util.Optional;
 
@@ -30,7 +32,10 @@ public class AuthController {
     @Autowired
     private UserConfigService workstationService;
 
-    // 1. API ĐĂNG KÝ
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
+    // API ĐĂNG KÝ
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody User user, @RequestParam(required = false) String guestId) {
         if (userRepository.findByUsername(user.getUsername()).isPresent()) {
@@ -42,10 +47,13 @@ public class AuthController {
         userRepository.save(user);
 
         workstationService.transferGuestConfigToUser(guestId, user.getUsername());
+
+        eventPublisher.publishEvent(new SystemEvent(this, user.getUsername(), "AUTH", "{\"action\": \"Đăng ký tài khoản mới\"}", null));
+
         return ResponseEntity.ok().body("Đăng kí thành công");
     }
 
-    // 2. API ĐĂNG NHẬP
+    // API ĐĂNG NHẬP
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody User loginRequest, @RequestParam(required = false) String guestId) {
         Optional<User> userOpt = userRepository.findByUsername(loginRequest.getUsername());
@@ -54,6 +62,9 @@ public class AuthController {
 
             workstationService.transferGuestConfigToUser(guestId, userOpt.get().getUsername());
             String token = jwtUtil.generateToken(userOpt.get());
+
+            eventPublisher.publishEvent(new SystemEvent(this, userOpt.get().getUsername(), "AUTH", "{\"action\": \"Đăng nhập hệ thống\"}", null));
+
             return ResponseEntity.ok(token);
         }
 

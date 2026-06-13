@@ -9,6 +9,8 @@ import com.hcmut.backend.service.GroupService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.context.ApplicationEventPublisher;
+import com.hcmut.backend.event.SystemEvent;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -22,6 +24,7 @@ public class GroupController {
     private final GroupService groupService;
     private final DeviceRepository deviceRepository;
     private final GroupMemberRepository groupMemberRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @GetMapping("/rooms/{roomId}/groups")
     public ResponseEntity<?> getGroupsByRoom(@PathVariable UUID roomId) {
@@ -35,6 +38,10 @@ public class GroupController {
                 return ResponseEntity.badRequest().body("Thiếu tên nhóm hoặc ID người quản lý!");
             }
             GroupDTO newGroup = groupService.createGroup(roomId, groupDTO);
+
+            String desc = String.format("{\"action\": \"Tạo nhóm/lớp\", \"groupName\": \"%s\"}", newGroup.getName());
+            eventPublisher.publishEvent(new SystemEvent(this, groupDTO.getManagerUsername(), "GROUP", desc, null));
+
             return ResponseEntity.ok(newGroup);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -45,6 +52,9 @@ public class GroupController {
     public ResponseEntity<?> deleteGroup(@PathVariable UUID groupId) {
         try {
             groupService.deleteGroup(groupId);
+
+            eventPublisher.publishEvent(new SystemEvent(this, "Manager", "GROUP", "{\"action\": \"Xóa nhóm/lớp\"}", null));
+
             return ResponseEntity.ok("Đã xóa nhóm thành công!");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -53,6 +63,10 @@ public class GroupController {
 
     @GetMapping("/groups/{groupId}/attendance")
     public ResponseEntity<?> takeAttendance(@PathVariable UUID groupId, @RequestParam UUID roomId) {
+
+        String desc = String.format("{\"action\": \"Bấm điểm danh nhóm\", \"groupId\": \"%s\"}", groupId.toString());
+        eventPublisher.publishEvent(new SystemEvent(this, "Manager", "ATTENDANCE", desc, null));
+
         //  Lấy danh sách thành viên hợp lệ của Group
         List<GroupMember> members = groupMemberRepository.findByIdGroupId(groupId);
         Set<String> memberUsernames = members.stream()

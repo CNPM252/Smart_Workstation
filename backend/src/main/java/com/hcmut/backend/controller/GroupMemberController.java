@@ -5,6 +5,8 @@ import com.hcmut.backend.service.GroupMemberService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.context.ApplicationEventPublisher;
+import com.hcmut.backend.event.SystemEvent;
 
 import java.util.UUID;
 
@@ -15,6 +17,7 @@ import java.util.UUID;
 public class GroupMemberController {
 
     private final GroupMemberService groupMemberService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // Lấy danh sách
     @GetMapping("/{groupId}/members")
@@ -30,6 +33,10 @@ public class GroupMemberController {
                 return ResponseEntity.badRequest().body("Thiếu thông tin MSSV!");
             }
             groupMemberService.addMemberToGroup(groupId, request.getUsername());
+
+            String desc = String.format("{\"action\": \"Thêm thành viên vào nhóm/lớp\", \"addedUser\": \"%s\"}", request.getUsername());
+            eventPublisher.publishEvent(new SystemEvent(this, "Manager", "GROUP", desc, null));
+
             return ResponseEntity.ok("Đã thêm thành viên vào nhóm thành công!");
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -41,6 +48,10 @@ public class GroupMemberController {
     public ResponseEntity<?> removeMember(@PathVariable UUID groupId, @PathVariable UUID userId) {
         try {
             groupMemberService.removeMemberFromGroup(groupId, userId);
+
+            String desc = String.format("{\"action\": \"Xóa thành viên khỏi nhóm/lớp\", \"removedUser\": \"%s\"}", userId);
+            eventPublisher.publishEvent(new SystemEvent(this, "Manager", "GROUP", desc, null));
+
             return ResponseEntity.ok("Đã xóa thành viên khỏi nhóm!");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());

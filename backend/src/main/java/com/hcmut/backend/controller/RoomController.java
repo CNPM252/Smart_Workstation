@@ -6,6 +6,8 @@ import com.hcmut.backend.repository.RoomRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.context.ApplicationEventPublisher;
+import com.hcmut.backend.event.SystemEvent;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -19,6 +21,7 @@ public class RoomController {
 
     private final RoomService roomService;
     private final RoomRepository roomRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     // Lấy danh sách phòng của user
     @GetMapping
@@ -35,6 +38,10 @@ public class RoomController {
     public ResponseEntity<?> createRoom(@RequestBody RoomDTO roomDTO) {
         try {
             RoomDTO newRoom = roomService.createRoom(roomDTO);
+
+            String desc = String.format("{\"action\": \"Tạo không gian\", \"roomName\": \"%s\", \"roomCode\": \"%s\"}", newRoom.getName(), newRoom.getRoomCode());
+            eventPublisher.publishEvent(new SystemEvent(this, roomDTO.getOwnerUsername(), "ROOM", desc, null));
+
             return ResponseEntity.ok(newRoom);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(e.getMessage());
@@ -45,6 +52,9 @@ public class RoomController {
     @DeleteMapping("/{id}")
     public ResponseEntity<?> deleteRoom(@PathVariable UUID id) {
         roomService.deleteRoom(id);
+
+        eventPublisher.publishEvent(new SystemEvent(this, "System/Admin", "ROOM", "{\"action\": \"Xóa không gian\"}", null));
+
         return ResponseEntity.ok("Đã xóa phòng thành công!");
     }
 }

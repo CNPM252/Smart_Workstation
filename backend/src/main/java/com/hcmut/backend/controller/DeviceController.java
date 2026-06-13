@@ -17,6 +17,8 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.JsonNode;
+import org.springframework.context.ApplicationEventPublisher;
+import com.hcmut.backend.event.SystemEvent;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -44,6 +46,8 @@ public class DeviceController {
 
     private final SimpMessagingTemplate messagingTemplate;
 
+    private final ApplicationEventPublisher eventPublisher;
+
     @PostMapping("/{macAddress}/check-in")
     public ResponseEntity<?> checkIn(@PathVariable String macAddress, @RequestParam String userId) {
         try {
@@ -55,6 +59,9 @@ public class DeviceController {
             if (device.getRoom() != null) {
                 broadcastRoomUpdate(device.getRoom().getId());
             }
+
+            String desc = String.format("{\"action\": \"Check-in thiết bị\", \"room\": \"%s\"}", device.getRoom() != null ? device.getRoom().getName() : "N/A");
+            eventPublisher.publishEvent(new SystemEvent(this, userId, "DEVICE", desc, macAddress));
 
             return ResponseEntity.ok("Check-in thành công!");
         } catch (Exception e) {
@@ -68,6 +75,7 @@ public class DeviceController {
             Device device = deviceRepository.findById(macAddress)
                     .orElseThrow(() -> new RuntimeException("Không tìm thấy thiết bị"));
 
+            String lastUser = device.getCurrentUser() != null ? device.getCurrentUser() : "System";
             UUID roomId = device.getRoom() != null ? device.getRoom().getId() : null;
 
             deviceService.checkOut(macAddress);
@@ -75,6 +83,8 @@ public class DeviceController {
             if (roomId != null) {
                 broadcastRoomUpdate(roomId);
             }
+
+            eventPublisher.publishEvent(new SystemEvent(this, lastUser, "DEVICE", "{\"action\": \"Check-out/Giải phóng chỗ ngồi\"}", macAddress));
 
             return ResponseEntity.ok("Check-out thành công!");
         } catch (Exception e) {
@@ -97,6 +107,10 @@ public class DeviceController {
     public ResponseEntity<?> autoJoin(@RequestBody DeviceJoinRequest request) {
         try {
             Device savedDevice = deviceService.autoJoinRoom(request);
+
+            String desc = String.format("{\"action\": \"Nhận diện cắm mạch vào phòng\", \"roomCode\": \"%s\"}", request.getRoomCode());
+            eventPublisher.publishEvent(new SystemEvent(this, "Admin/Manager", "DEVICE", desc, request.getMacAddress()));
+
             return ResponseEntity.ok("Thiết bị " + savedDevice.getMacAddress() + " đã vào phòng thành công!");
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(e.getMessage());

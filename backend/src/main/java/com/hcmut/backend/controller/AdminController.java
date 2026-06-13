@@ -1,6 +1,8 @@
 package com.hcmut.backend.controller;
 
 import com.hcmut.backend.model.User;
+import com.hcmut.backend.repository.DeviceRepository;
+import com.hcmut.backend.repository.RoomRepository;
 import com.hcmut.backend.repository.UserRepository;
 import com.hcmut.backend.repository.EventLogRepository;
 import lombok.Data;
@@ -22,6 +24,8 @@ public class AdminController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final EventLogRepository eventLogRepository;
+    private final RoomRepository roomRepository;
+    private final DeviceRepository  deviceRepository;
 
     @GetMapping("/users")
     public ResponseEntity<?> getAllUsers() {
@@ -56,6 +60,21 @@ public class AdminController {
     @GetMapping("/logs")
     public ResponseEntity<?> getSystemLogs() {
         return ResponseEntity.ok(eventLogRepository.findAllByOrderByCreatedAtDesc());
+    }
+
+    @GetMapping("/dashboard")
+    public ResponseEntity<?> getDashboardStats() {
+        long totalUsers = userRepository.count();
+        long totalRooms = roomRepository.count();
+        long totalDevices = deviceRepository.count();
+        long totalLogs = eventLogRepository.count();
+
+        return ResponseEntity.ok(Map.of(
+                "totalUsers", totalUsers,
+                "totalRooms", totalRooms,
+                "totalDevices", totalDevices,
+                "totalLogs", totalLogs
+        ));
     }
 
 
