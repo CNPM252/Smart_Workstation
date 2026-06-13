@@ -2,9 +2,11 @@ package com.hcmut.backend.controller;
 
 import com.hcmut.backend.model.User;
 import com.hcmut.backend.repository.UserRepository;
+import com.hcmut.backend.repository.EventLogRepository;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,10 +16,12 @@ import java.util.Map;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
+@PreAuthorize("hasRole('ROLE_ADMIN')")
 public class AdminController {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EventLogRepository eventLogRepository;
 
     @GetMapping("/users")
     public ResponseEntity<?> getAllUsers() {
@@ -48,6 +52,12 @@ public class AdminController {
                 "username", newUser.getUsername()
         ));
     }
+
+    @GetMapping("/logs")
+    public ResponseEntity<?> getSystemLogs() {
+        return ResponseEntity.ok(eventLogRepository.findAllByOrderByCreatedAtDesc());
+    }
+
 
     @Data
     static class CreateUserRequest {
