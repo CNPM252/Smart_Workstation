@@ -18,7 +18,7 @@ import java.util.Map;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*")
-@PreAuthorize("hasRole('ROLE_ADMIN')")
+@PreAuthorize("hasAuthority('ROLE_ADMIN')")
 public class AdminController {
 
     private final UserRepository userRepository;

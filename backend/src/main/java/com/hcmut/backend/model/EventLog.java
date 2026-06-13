@@ -2,6 +2,7 @@ package com.hcmut.backend.model;
 
 import jakarta.persistence.*;
 import lombok.Data;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import org.hibernate.annotations.CreationTimestamp;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
@@ -18,6 +19,7 @@ public class EventLog {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "device_mac_address", referencedColumnName = "device_mac_address")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Device device;
 
     @Column(name = "acted_by_user")
