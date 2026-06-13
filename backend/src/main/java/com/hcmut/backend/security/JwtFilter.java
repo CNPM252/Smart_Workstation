@@ -41,7 +41,9 @@ public class JwtFilter extends OncePerRequestFilter {
                 if (jwtUtil.validateToken(token)) {
                     String role = jwtUtil.extractRole(token);
                     List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-
+                    if (role != null && !role.isEmpty()) {
+                        authorities.add(new SimpleGrantedAuthority(role)); // 🚀 DÒNG FIX LỖI TẠI ĐÂY
+                    }
                     UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(username, null, authorities);
                     SecurityContextHolder.getContext().setAuthentication(authToken);
@@ -50,6 +52,7 @@ public class JwtFilter extends OncePerRequestFilter {
         } catch (Exception e) {
             System.out.println("JWT Filter: Token không hợp lệ hoặc không tồn tại - " + e.getMessage());
         }
+
         filterChain.doFilter(request, response);
     }
 }

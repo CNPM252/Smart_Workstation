@@ -160,23 +160,22 @@ public class DeviceController {
             String macAddress = request.getMacAddress();
             long now = System.currentTimeMillis();
 
-            // 1.1 GHI VÀO REDIS QUEUE CHO CRON JOB
+            // GHI VÀO REDIS QUEUE CHO CRON JOB
             ObjectNode logNode = objectMapper.createObjectNode();
             logNode.put("deviceMacAddress", macAddress);
             logNode.put("currentUserId", finalUserId);
             logNode.put("lightValue", request.getLight());
             logNode.put("distanceValue", request.getDistance());
-            // LƯU Ý: Nếu entity HistoryLog có cột motion, nên lưu thêm vào đây để phục vụ thống kê chính xác hơn
-            // logNode.put("motionValue", request.getMotion());
+            logNode.put("motionValue", request.getMotion());
             logNode.put("recordedAt", now);
             stringRedisTemplate.opsForList().rightPush("history_log_queue", objectMapper.writeValueAsString(logNode));
 
 
-// 1.2 KHỞI TẠO GIÁ TRỊ MẶC ĐỊNH
+            // KHỞI TẠO GIÁ TRỊ MẶC ĐỊNH
             boolean autoDimActive = true;
             int manualBrightness = 100;
             boolean commandSleep = false;
-            boolean autoSleepActive = true; // 🚀 Thêm cờ mặc định cho Auto-sleep
+            boolean autoSleepActive = true; // Thêm cờ mặc định cho Auto-sleep
 
             // 1.3 TRUY XUẤT CẤU HÌNH & XỬ LÝ LOGIC NGỦ ĐÔNG
             if (finalUserId != null && !finalUserId.startsWith("guest_")) {
@@ -197,7 +196,7 @@ public class DeviceController {
                         distMax = cacheNode.get("distanceThresholdMax").asInt();
                         timeoutMins = cacheNode.get("sleepTimeoutMins").asLong();
 
-                        // 🚀 Đọc cờ Auto-sleep từ Cache
+                        // Đọc cờ Auto-sleep từ Cache
                         if (cacheNode.has("autoSleepEnabled")) {
                             autoSleepActive = cacheNode.get("autoSleepEnabled").asBoolean();
                         }
@@ -219,7 +218,7 @@ public class DeviceController {
                                 distMax = config.getDistanceThresholdMax();
                                 timeoutMins = config.getSleepTimeoutMins();
 
-                                // 🚀 Đọc cờ Auto-sleep từ Database
+                                // Đọc cờ Auto-sleep từ Database
                                 if (config.getAutoSleepEnabled() != null) {
                                     autoSleepActive = config.getAutoSleepEnabled();
                                 }
@@ -230,7 +229,7 @@ public class DeviceController {
                                 cacheNode.put("distanceThresholdMin", distMin);
                                 cacheNode.put("distanceThresholdMax", distMax);
                                 cacheNode.put("sleepTimeoutMins", timeoutMins);
-                                cacheNode.put("autoSleepEnabled", autoSleepActive); // 🚀 Lưu vào Cache
+                                cacheNode.put("autoSleepEnabled", autoSleepActive); // Lưu vào Cache
 
                                 stringRedisTemplate.opsForValue().set(configCacheKey, objectMapper.writeValueAsString(cacheNode), 1, TimeUnit.DAYS);
                             }
@@ -262,7 +261,8 @@ public class DeviceController {
                             long suspicionTime = Long.parseLong(suspicionTimeStr);
                             long timeInSuspicion = now - suspicionTime;
 
-                            if (timeInSuspicion >= 30 * 1000L) {
+                            // ori: 30*1000L, FOR DEMO: 5*1000L
+                            if (timeInSuspicion >= 5 * 1000L) {
                                 isPresent = false;
                             } else {
                                 isPresent = true;
@@ -271,7 +271,7 @@ public class DeviceController {
                     }
 
                     // BƯỚC 3: XỬ LÝ TIME-OUT NGỦ ĐÔNG
-                    // 🚀 Nếu TẮT auto-sleep hoặc CÓ NGƯỜI -> Liên tục reset đồng hồ và khóa lệnh ngủ
+                    // Nếu TẮT auto-sleep hoặc CÓ NGƯỜI -> Liên tục reset đồng hồ và khóa lệnh ngủ
                     if (!autoSleepActive || isPresent) {
                         stringRedisTemplate.opsForValue().set(lastActiveKey, String.valueOf(now));
                         commandSleep = false;
@@ -281,7 +281,10 @@ public class DeviceController {
                         if (lastActiveStr != null) {
                             long lastActiveTime = Long.parseLong(lastActiveStr);
                             long timeAwayMillis = now - lastActiveTime;
-                            long timeoutMillisLimit = timeoutMins * 60L * 1000L;
+
+                            // CHỈNH THỜI GIAN SLEEP Ở ĐÂY
+                            // ori: 60*1000L, FOR DEMO
+                            long timeoutMillisLimit = 5 * 1000L;
 
                             if (timeAwayMillis > 24 * 60 * 60 * 1000L) {
                                 stringRedisTemplate.opsForValue().set(lastActiveKey, String.valueOf(now));
@@ -298,7 +301,6 @@ public class DeviceController {
                 }
             }
 
-            // ĐÓNG GÓI LỆNH TRẢ VỀ FRONTEND
             Map<String, Object> commandResponse = new HashMap<>();
             commandResponse.put("action", commandSleep ? "SLEEP" : "AWAKE");
             commandResponse.put("autoDim", autoDimActive);

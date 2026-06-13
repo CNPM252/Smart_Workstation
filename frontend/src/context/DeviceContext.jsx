@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext';
 const DeviceContext = createContext();
 
 export const DeviceProvider = ({ children }) => {
-    // 🚀 LẤY THÔNG TIN USER TỪ AUTH
+    // LẤY THÔNG TIN USER TỪ AUTH
     const { user, isGuest } = useAuth();
 
     const [isSleeping, setIsSleeping] = useState(false);
@@ -19,7 +19,7 @@ export const DeviceProvider = ({ children }) => {
     const selectedDeviceMacRef = useRef('');
     const latestSensorDataRef = useRef(null);
 
-    // 🚀 REF: LƯU MÃ MAC ĐANG ĐƯỢC CHECK-IN TRONG DB
+    // REF: LƯU MÃ MAC ĐANG ĐƯỢC CHECK-IN TRONG DB
     const checkedInMacRef = useRef(null);
     const lastInteractionRef = useRef(Date.now());
 
@@ -44,7 +44,7 @@ export const DeviceProvider = ({ children }) => {
         };
     }, []);
 
-    // 🚀 LUỒNG THÔNG MINH: TỰ ĐỘNG CHECK-IN / CHECK-OUT DỰA VÀO CÁP & ĐĂNG NHẬP
+    // TỰ ĐỘNG CHECK-IN / CHECK-OUT DỰA VÀO CÁP & ĐĂNG NHẬP
     useEffect(() => {
         const mac = sensorData.macAddress;
 
@@ -80,7 +80,7 @@ export const DeviceProvider = ({ children }) => {
         }
     }, [sensorData.macAddress, currentUserId]);
 
-    // 🚀 XỬ LÝ UNLOAD & RÚT CÁP ĐỘT NGỘT
+    // XỬ LÝ UNLOAD & RÚT CÁP ĐỘT NGỘT
     useEffect(() => {
         const handleUnload = () => {
             // Tắt trình duyệt lúc đang cắm -> Bắn beacon Check-out

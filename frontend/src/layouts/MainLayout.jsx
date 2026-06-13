@@ -20,14 +20,12 @@ const MainLayout = () => {
         ? sessionStorage.getItem('guestId')
         : (user?.id || user?.userId || user?.uuid || user?.username || (typeof user === 'string' ? user : ''));
 
-    // =========================================================================
-    // STATE GLOBAL CHO SMART POMODORO (Giữ nguyên khi chuyển trang)
-    // =========================================================================
+    // STATE GLOBAL POMODORO
     const [pomoMode, setPomoMode] = useState('25-5');
     const [isWorkSession, setIsWorkSession] = useState(true);
     const [timeLeft, setTimeLeft] = useState(25 * 60);
     const [isRunning, setIsRunning] = useState(false);
-    const [isManualPause, setIsManualPause] = useState(false); // Lưu vết người dùng tự bấm dừng
+    const [isManualPause, setIsManualPause] = useState(false); //  người dùnbấm dừng
 
     // Effect đếm ngược Pomodoro
     useEffect(() => {
@@ -54,17 +52,16 @@ const MainLayout = () => {
     }, [isRunning, isManualPause]);
 
 
-    // =========================================================================
-    //  LOGIC CÔNG THÁI HỌC (FETCH CONFIG TỪ BACKEND + AUTO POMODORO)
-    // =========================================================================
+    //  logic detect user
+
     const [userConfig, setUserConfig] = useState({ distMin: 40, distMax: 70 });
     const [alert, setAlert] = useState(null);
 
     const timers = useRef({ badPosture: 0, goodPosture: 0, sitting: 0, away: 0 });
 
-    const POSTURE_LIMIT = 10;  // test 10 giây
-    const SITTING_LIMIT = 40;
-    const TOLERANCE = 10;
+    const POSTURE_LIMIT = 5;
+    const SITTING_LIMIT = 15;
+    const TOLERANCE = 3;
 
     // Lấy Config Cá Nhân từ Backend
     useEffect(() => {
@@ -82,46 +79,40 @@ const MainLayout = () => {
         }
     }, [currentUserId]);
 
-    // Vòng lặp Công thái học
+    // Vòng lặp detect
     useEffect(() => {
         if (!isConnected || !sensorData) return;
 
         const interval = setInterval(() => {
-            const { distance, motion } = sensorData;
-            const { distMin, distMax } = userConfig;
+            const dist = Number(sensorData.distance) || 0;
+            const motion = sensorData.motion;
+            const dMin = Number(userConfig.distMin) || 40;
+            const dMax = Number(userConfig.distMax) || 70;
 
-            // 🚀 LOGIC MỚI: ĐỒNG BỘ TUYỆT ĐỐI VỚI BACKEND
-            const lowerBound = distMin * 0.8;
-            const upperBound = distMax * 1.2;
+            const lowerBound = dMin * 0.8;
+            const upperBound = dMax * 1.2;
 
-            // Có người khi: Cảm biến chuyển động TRUE, HOẶC khoảng cách nằm trong vùng biên độ cho phép
-            const isPresent = motion || (distance >= lowerBound && distance <= upperBound && distance !== 0);
-
-            // Tư thế chuẩn khi: Nằm đúng biên độ gốc (Không có 0.8 hay 1.2)
-            const isGoodPosture = distance >= distMin && distance <= distMax;
+            const isPresent = motion || (dist >= lowerBound && dist <= upperBound && dist !== 0);
+            const isGoodPosture = dist >= dMin && dist <= dMax;
 
             if (isPresent) {
                 timers.current.sitting += 1;
-                timers.current.away = 0; // Đang ngồi thì xóa bộ đếm vắng mặt
+                timers.current.away = 0;
 
-                // 🚀 TỰ ĐỘNG CHẠY POMODORO
                 if (!pomoStateRef.current.isRunning && !pomoStateRef.current.isManualPause) {
                     setIsRunning(true);
                 }
 
-                // 🚀 LOGIC TƯ THẾ (Áp dụng Tolerance)
-                if (!isGoodPosture && distance !== 0) {
+                if (!isGoodPosture && dist !== 0) {
                     timers.current.badPosture += 1;
-                    timers.current.goodPosture = 0;
                 } else if (isGoodPosture) {
-                    timers.current.goodPosture += 1;
-                    if (timers.current.goodPosture >= TOLERANCE) {
-                        timers.current.badPosture = 0;
+                    if (timers.current.badPosture > 0) {
+                        timers.current.badPosture -= 1;
                     }
                 }
 
                 if (timers.current.badPosture >= POSTURE_LIMIT) {
-                    triggerAlert('posture', 'Cảnh báo tư thế!', 'Bạn đã ngồi sai tư thế quá lâu. Thẳng lưng lên sếp ơi!');
+                    triggerAlert('posture', 'Cảnh báo tư thế!', 'Bạn đã ngồi sai tư thế quá lâu. Thẳng lưng lên nhé!');
                     timers.current.badPosture = 0;
                 }
 
@@ -131,16 +122,13 @@ const MainLayout = () => {
                 }
 
             } else {
-                // NẰM NGOÀI KHOẢNG ĐÓ (Vắng mặt / Quá xa)
                 timers.current.away += 1;
 
-                // Nếu sự vắng mặt này kéo dài vượt quá TOLERANCE (10s/30s) -> Mới chính thức Reset
                 if (timers.current.away >= TOLERANCE) {
                     timers.current.sitting = 0;
                     timers.current.badPosture = 0;
                     timers.current.goodPosture = 0;
 
-                    // 🚀 TỰ ĐỘNG PAUSE POMODORO
                     if (pomoStateRef.current.isRunning) setIsRunning(false);
                     if (pomoStateRef.current.isManualPause) setIsManualPause(false);
                 }
